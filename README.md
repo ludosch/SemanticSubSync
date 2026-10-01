@@ -9,6 +9,20 @@ already in sync, even when the two are in different languages.
 semantic-subsync Movie.fr.srt Movie.mkv     # reference: the subtitle embedded in the video
 ```
 
+## At a glance
+
+The same subtitle files given to each tool, with a reference subtitle that is in sync with the video:
+
+| Tool | Scene missing + 25 fps | Extra scene | Wrong reference (commentary track) |
+|---|---|---|---|
+| alass 2.0.0 | ✅ 100 % | ❌ 87 %, up to 17 s off | ❌ moves lines by up to 96 s |
+| ffsubsync 0.5.1 (with or without `--split-penalty`) | ❌ 52 %, 70-81 s off | ❌ 52 %, 61-70 s off | ❌ moves lines by up to 96 s |
+| LAPSE 2.2.3 | ❌ 52 %, 70 s off, says "solid" | ❌ 52 %, 70 s off, says "solid" | ❌ moves lines by up to 75 s, says "solid" |
+| **SemanticSubSync** | ✅ **100 %** | ✅ **100 %** | ✅ **refuses, file left alone** |
+
+Share of lines that end up within 300 ms of their true position. Details and scripts to rerun
+it: [`examples/lighthouse`](examples/lighthouse).
+
 ## Why this project exists
 
 Subtitles downloaded for a movie or an episode are often made for another release of the same
@@ -46,20 +60,6 @@ corrected -> downloaded.fr.synced.srt (2 segment(s), largest shift +90.69 s) [re
 | *the missing scene* | 4:45 to 5:55 | | |
 | Encore. Plus fort cette fois. | 6:18.7 | 4:55.9 (82.8 s early) | 6:18.7 ✅ |
 | Oui ? | 9:26.5 | 7:56.0 (90.5 s early) | 9:26.4 ✅ |
-
-The same files given to the usual tools, each with the English subtitle as reference:
-
-![Situation 1, error of each line](docs/example-missing-scene.svg)
-
-| Tool | Scene missing + 25 fps | Extra scene | Wrong reference (commentary track) |
-|---|---|---|---|
-| alass 2.0.0 | ✅ 100 % | ❌ 87 %, up to 17 s off | ❌ moves lines by up to 96 s |
-| ffsubsync 0.5.1 (with or without `--split-penalty`) | ❌ 52 %, 70-81 s off | ❌ 52 %, 61-70 s off | ❌ moves lines by up to 96 s |
-| LAPSE 2.2.3 | ❌ 52 %, 70 s off, says "solid" | ❌ 52 %, 70 s off, says "solid" | ❌ moves lines by up to 75 s, says "solid" |
-| **SemanticSubSync** | ✅ **100 %** | ✅ **100 %** | ✅ **refuses, file left alone** |
-
-Share of lines within 300 ms of their true position. The three situations, the scripts to rerun
-them and a chart for each are in [`examples/lighthouse`](examples/lighthouse).
 
 ## Scope
 
@@ -125,7 +125,9 @@ reproduces each distortion on synthetic dialogue (see [Development](#development
 
 ## Installation
 
-Python 3.11 or later. ffmpeg / ffprobe are needed only when the reference is a video.
+Python 3.11 or later, on 64-bit Linux, macOS or Windows. ffmpeg / ffprobe are needed only when
+the reference is a video. On a Raspberry Pi, a 64-bit OS is required (the ONNX runtime has no
+32-bit ARM build); this has not been tested on real hardware yet.
 
 ```bash
 pip install "semantic-subsync[model] @ git+https://github.com/ludosch/SemanticSubSync"

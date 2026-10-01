@@ -9,6 +9,20 @@ déjà synchronisé, même quand les deux sont dans des langues différentes.
 semantic-subsync Film.fr.srt Film.mkv     # référence : le sous-titre intégré à la vidéo
 ```
 
+## En bref
+
+Les mêmes fichiers de sous-titres confiés à chaque outil, avec un sous-titre de référence calé sur la vidéo :
+
+| Outil | Scène absente + 25 i/s | Scène en trop | Mauvaise référence (piste commentaire) |
+|---|---|---|---|
+| alass 2.0.0 | ✅ 100 % | ❌ 87 %, jusqu'à 17 s d'écart | ❌ déplace des répliques de 96 s au plus |
+| ffsubsync 0.5.1 (avec ou sans `--split-penalty`) | ❌ 52 %, 70 à 81 s d'écart | ❌ 52 %, 61 à 70 s d'écart | ❌ déplace des répliques de 96 s au plus |
+| LAPSE 2.2.3 | ❌ 52 %, 70 s d'écart, se dit « solid » | ❌ 52 %, 70 s d'écart, se dit « solid » | ❌ déplace des répliques de 75 s au plus, se dit « solid » |
+| **SemanticSubSync** | ✅ **100 %** | ✅ **100 %** | ✅ **refuse, fichier intact** |
+
+Part des répliques qui finissent à moins de 300 ms de leur vraie position. Détails et scripts
+pour le rejouer : [`examples/lighthouse`](examples/lighthouse) (en anglais).
+
 ## Pourquoi ce projet existe
 
 Les sous-titres téléchargés pour un film ou un épisode sont souvent faits pour une autre version
@@ -49,22 +63,6 @@ corrected -> downloaded.fr.synced.srt (2 segment(s), largest shift +90.69 s) [re
 | *la scène absente* | de 4:45 à 5:55 | | |
 | Encore. Plus fort cette fois. | 6:18.7 | 4:55.9 (82,8 s d'avance) | 6:18.7 ✅ |
 | Oui ? | 9:26.5 | 7:56.0 (90,5 s d'avance) | 9:26.4 ✅ |
-
-Les mêmes fichiers confiés aux outils habituels, chacun avec le sous-titre anglais comme
-référence :
-
-![Situation 1, erreur de chaque réplique](docs/example-missing-scene.svg)
-
-| Outil | Scène absente + 25 i/s | Scène en trop | Mauvaise référence (piste commentaire) |
-|---|---|---|---|
-| alass 2.0.0 | ✅ 100 % | ❌ 87 %, jusqu'à 17 s d'écart | ❌ déplace des répliques de 96 s au plus |
-| ffsubsync 0.5.1 (avec ou sans `--split-penalty`) | ❌ 52 %, 70 à 81 s d'écart | ❌ 52 %, 61 à 70 s d'écart | ❌ déplace des répliques de 96 s au plus |
-| LAPSE 2.2.3 | ❌ 52 %, 70 s d'écart, se dit « solid » | ❌ 52 %, 70 s d'écart, se dit « solid » | ❌ déplace des répliques de 75 s au plus, se dit « solid » |
-| **SemanticSubSync** | ✅ **100 %** | ✅ **100 %** | ✅ **refuse, fichier intact** |
-
-Part des répliques à moins de 300 ms de leur vraie position. Les trois situations, les scripts
-pour les rejouer et un graphique pour chacune sont dans
-[`examples/lighthouse`](examples/lighthouse) (en anglais).
 
 ## Cadre d'utilisation
 
@@ -134,8 +132,9 @@ La suite de tests reproduit chaque déformation sur des dialogues synthétiques 
 
 ## Installation
 
-Python 3.11 ou plus récent. ffmpeg / ffprobe ne sont nécessaires que si la référence est une
-vidéo.
+Python 3.11 ou plus récent, sur Linux, macOS ou Windows 64 bits. ffmpeg / ffprobe ne sont
+nécessaires que si la référence est une vidéo. Sur un Raspberry Pi, il faut un système 64 bits
+(le moteur ONNX n'existe pas en ARM 32 bits) ; ce n'est pas encore testé sur du vrai matériel.
 
 ```bash
 pip install "semantic-subsync[model] @ git+https://github.com/ludosch/SemanticSubSync"
