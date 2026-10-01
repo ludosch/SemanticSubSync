@@ -126,8 +126,10 @@ reproduces each distortion on synthetic dialogue (see [Development](#development
 ## Installation
 
 Python 3.11 or later, on 64-bit Linux, macOS or Windows. ffmpeg / ffprobe are needed only when
-the reference is a video. On a Raspberry Pi, a 64-bit OS is required (the ONNX runtime has no
-32-bit ARM build); this has not been tested on real hardware yet.
+the reference is a video. ARM64 (Raspberry Pi class
+hardware) is covered by the CI: tests, both models, the example and the Docker image run on
+an ARM64 machine at every commit, with the same results as on x86-64. A Raspberry Pi needs a
+64-bit OS: the ONNX runtime has no 32-bit ARM build.
 
 ```bash
 pip install "semantic-subsync[model] @ git+https://github.com/ludosch/SemanticSubSync"

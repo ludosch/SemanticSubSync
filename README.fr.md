@@ -133,8 +133,10 @@ La suite de tests reproduit chaque déformation sur des dialogues synthétiques 
 ## Installation
 
 Python 3.11 ou plus récent, sur Linux, macOS ou Windows 64 bits. ffmpeg / ffprobe ne sont
-nécessaires que si la référence est une vidéo. Sur un Raspberry Pi, il faut un système 64 bits
-(le moteur ONNX n'existe pas en ARM 32 bits) ; ce n'est pas encore testé sur du vrai matériel.
+nécessaires que si la référence est une vidéo. L'ARM64 (matériel de type
+Raspberry Pi) est couvert par la CI : tests, les deux modèles, l'exemple et l'image Docker
+tournent sur une machine ARM64 à chaque commit, avec les mêmes résultats qu'en x86-64. Un
+Raspberry Pi doit avoir un système 64 bits : le moteur ONNX n'existe pas en ARM 32 bits.
 
 ```bash
 pip install "semantic-subsync[model] @ git+https://github.com/ludosch/SemanticSubSync"
