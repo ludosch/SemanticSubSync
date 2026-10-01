@@ -94,6 +94,38 @@ def test_recap_the_video_lacks_is_dropped_not_stacked_at_zero(recap):
     assert accuracy(out, [[s - t0, e - t0, k] for s, e, k in base[recap:]]) >= 0.95, st
 
 
+@pytest.mark.parametrize("mode", ["keep", "drop"])
+def test_credit_in_a_silence_is_kept_unless_extra_lines_drop(mode):
+    """A translator credit before the dialogue starts: the video has no line for it. By default
+    it stays where nothing is shown nor said; extra_lines="drop" removes it."""
+    base = dialogue(n=300, seed=24)                       # dialogue starts at 30 s
+    tgt = [[1.0, 3.0, "Subtitles by someone"]] + tgt_cues(base, warp=lambda t: t + 5.0)
+    out, st = run(tgt, ref_cues(base), extra_lines=mode)
+    credit = [c for c in out if c[2] == "Subtitles by someone"]
+    assert credit == ([[1.0, 3.0, "Subtitles by someone"]] if mode == "keep" else []), st
+    assert accuracy(out, base) >= 0.95, st
+
+
+@pytest.mark.parametrize("mode", ["keep", "drop"])
+def test_extra_block_is_kept_whole_in_a_silence_or_not_at_all(mode):
+    """Two extra lines at a cut, in a long silence of the video: kept together by default.
+    Never a line over another line or over dialogue."""
+    base = dialogue(n=300, seed=25)
+    k = next(n for n in range(100, 250) if base[n + 1][0] - base[n][1] > 20)     # a long silence
+    gap0 = base[k][1] + 2.0
+    ref = ref_cues(base)
+    extra = [[gap0, gap0 + 2.0, "extra k90001"], [gap0 + 3.0, gap0 + 5.0, "extra k90002"]]
+    # the target's edition has 30 s more after the extra lines: a cut right there
+    tgt = tgt_cues(base, warp=lambda t: t + (30.0 if t > gap0 else 0.0)) + extra
+    tgt.sort()
+    out, st = run(tgt, ref, extra_lines=mode)
+    kept = [c for c in out if c[2].startswith("extra")]
+    assert len(kept) == (2 if mode == "keep" else 0), st
+    lines = sorted(out)
+    assert all(a[1] <= b[0] for a, b in zip(lines, lines[1:]) if a[2].startswith("extra") or b[2].startswith("extra"))
+    assert all(not (r[0] < c[1] and c[0] < r[1]) for c in kept for r in ref)
+
+
 def test_own_overlaps_do_not_count_as_a_correction():
     """Real case: a site watermark shown over the first line. In sync, the file stays untouched;
     the overlap is the file's own, not something to repair."""

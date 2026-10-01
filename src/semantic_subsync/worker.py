@@ -21,6 +21,8 @@ BASE = os.environ.get("SEMSYNC_DIR", "/data/.semsync")
 QUEUE, FAILED = f"{BASE}/queue", f"{BASE}/failed"
 LOG = f"{BASE}/semsync.log"
 POLL = 30
+# lines the video has no room for (a credit, a recap or a scene it lacks): "keep" or "drop"
+EXTRA_LINES = os.environ.get("SEMSYNC_EXTRA_LINES", core.P["extra_lines"])
 
 
 def log(rec):
@@ -55,7 +57,7 @@ def process(video, sub, origin="manual"):
     if found is None:
         return drop_stale("no_reference")
     ref, ref_desc = found
-    status, out, st = core.resync(media.read_srt(sub), ref)
+    status, out, st = core.resync(media.read_srt(sub), ref, p={**core.P, "extra_lines": EXTRA_LINES})
     info = {"reference": ref_desc, "coverage": st.get("coverage"), "segments": st.get("segments"),
             "max_abs_offset": st.get("max_abs_offset")}
     if status == "refused":

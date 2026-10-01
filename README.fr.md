@@ -111,9 +111,13 @@ réplique, en bleu ce qui est calé, en orange ce qui est décalé, en vert ce q
 4. Une seule cadence d'images est retenue pour tout le fichier parmi les valeurs standard
    (23,976 / 24 / 25 / 29,97 / 30). La chronologie est ensuite découpée en segments à décalage
    constant, ce qui absorbe les coupes et les scènes ajoutées. À une coupe, une réplique qui
-   tomberait là où la référence ne dit rien appartient à une scène absente de la vidéo : elle
-   est retirée. De même pour une réplique qui commencerait avant 0 s, typiquement un
-   « Précédemment dans… » que la vidéo n'a pas. Le résultat est toujours dans l'ordre
+   tomberait là où la référence ne dit rien appartient à une scène absente de la vidéo. De même
+   pour une réplique qui commencerait avant 0 s, typiquement un « Précédemment dans… » que la
+   vidéo n'a pas. Ces lignes en trop peuvent être utiles (le crédit du traducteur) ou non (un
+   récapitulatif absent de la vidéo) : par défaut, elles ne sont gardées que là où rien n'est
+   affiché ni dit, les lignes consécutives formant un bloc gardé en entier ou pas du tout. Un
+   crédit reste, un récapitulatif ou une scène entière part. Elles ne chevauchent jamais une
+   autre ligne. `--extra-lines drop` les retire toutes. Le résultat est toujours dans l'ordre
    chronologique.
 5. Garde-fous :
    - moins de 25 % des répliques ancrées : **refusé**, la référence ne dit pas la même chose ;
@@ -189,9 +193,10 @@ sont rarement découpées de la même façon : même une paire synchronisée res
   seuil.
 - Les 4 refus sont 2 fichiers dans les deux sens, dont le contenu appartient à un autre épisode
   que celui de leur nom (ni le dialogue ni la durée ne correspondent à la référence).
-- 170 répliques ont été retirées, dont 140 correspondent au récapitulatif de 35 répliques d'une
-  version, recalée sur des versions qui ne l'ont pas. Sans cela, elles
-  auraient été empilées à 00:00:00.
+- 170 lignes en trop n'avaient pas de place dans la vidéo. Avec `--extra-lines keep` (par
+  défaut), 9 lignes isolées sont restées dans des silences et 161 ont été retirées, dont 140
+  correspondent au récapitulatif de 35 répliques d'une version, recalée sur des versions qui ne
+  l'ont pas. Sinon, elles auraient été empilées à 00:00:00.
 - Aucune réplique n'est sortie hors de l'ordre chronologique ou avant 0 s, et aucun
   chevauchement de plus de 0,3 s n'a été créé.
 - 47 des 66 fichiers n'étaient pas en UTF-8 (voir [Utilisation](#utilisation)).
@@ -224,7 +229,8 @@ docker load -i semantic-subsync-0.9.0-docker-amd64.tar.gz
 ## Utilisation
 
 ```bash
-semantic-subsync SOUS-TITRE REFERENCE [-o SORTIE] [--track INDEX] [--lang CODE] [--min-coverage X] [--json]
+semantic-subsync SOUS-TITRE REFERENCE [-o SORTIE] [--track INDEX] [--lang CODE] [--extra-lines keep|drop]
+                 [--min-coverage X] [--json]
 ```
 
 - `REFERENCE` est un `.srt` calé sur la vidéo, ou la vidéo elle-même. Avec une vidéo, le
@@ -235,7 +241,10 @@ semantic-subsync SOUS-TITRE REFERENCE [-o SORTIE] [--track INDEX] [--lang CODE] 
 - Déjà synchronisé : rien n'est écrit.
 - Code de sortie : `0` corrigé ou déjà synchronisé, `1` refusé, `2` erreur.
 - `--json` affiche la décision et les statistiques (couverture, segments, décalages, répliques
-  retirées).
+  retirées, lignes en trop gardées).
+- `--extra-lines drop` retire les lignes pour lesquelles la vidéo n'a pas de place (voir
+  [Fonctionnement](#fonctionnement)) ; par défaut, `keep` les laisse là où rien n'est affiché
+  ni dit.
 - Les fichiers qui ne sont pas en UTF-8 (la plupart des téléchargements anciens) sont lus dans
   la page de code de leur langue, prise dans le nom du fichier (`Film.ru.srt`,
   `Serie.S01E01.pt-BR.srt`) ou dans `--lang ru`. Sans l'un ni l'autre, une page de code

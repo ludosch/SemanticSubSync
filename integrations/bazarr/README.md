@@ -81,6 +81,10 @@ On a small CPU, make the int8 model once with
 [`tools/quantize_model.py`](../../tools/quantize_model.py), put it in `./models/minilm-int8`,
 and add `SEMSYNC_MODEL_DIR=/models/minilm-int8`.
 
+`SEMSYNC_EXTRA_LINES=drop` removes every line the video has no room for (a translator credit,
+a recap or a scene that your video lacks). By default (`keep`) such lines stay where nothing is
+shown nor said, a block of consecutive lines whole or not at all.
+
 The worker runs at the lowest CPU priority (`nice 19`), so a media server transcoding at the
 same time keeps priority. It unloads the model when the queue is empty.
 

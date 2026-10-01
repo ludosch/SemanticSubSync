@@ -27,6 +27,10 @@ def parser():
     ap.add_argument("--lang", metavar="CODE",
                     help="language of SUBTITLE (e.g. fr, ru), to read files that are not UTF-8 "
                          "(default: the tag in its name, as in Movie.ru.srt)")
+    ap.add_argument("--extra-lines", choices=("keep", "drop"), default=core.P["extra_lines"],
+                    help="lines the video has no room for (a credit, a recap or a scene it lacks): "
+                         "keep them where nothing is shown nor said, a block of consecutive lines "
+                         "whole or not at all (default), or drop them all")
     ap.add_argument("--min-coverage", type=float, default=core.MIN_COVERAGE, metavar="X",
                     help=f"refuse below this share of anchored lines (default {core.MIN_COVERAGE})")
     ap.add_argument("--json", action="store_true", help="print the decision and statistics as JSON")
@@ -55,7 +59,8 @@ def main(argv=None):
             return EXIT_ERROR
         ref, ref_desc = found
 
-    status, cues, st = core.resync(media.read_srt(a.subtitle, a.lang), ref, min_coverage=a.min_coverage)
+    status, cues, st = core.resync(media.read_srt(a.subtitle, a.lang), ref, p={**core.P, "extra_lines": a.extra_lines},
+                                   min_coverage=a.min_coverage)
     if cues is not None:
         core.write(out_path, cues)
     if a.json:

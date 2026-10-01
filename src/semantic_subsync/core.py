@@ -20,7 +20,9 @@ P = dict(topk=3, min_sim=0.55, nb=7, max_dev=1.0, max_offset=900.0,
          stride=1,       # embed every Nth target cue only (anchors); all cues are still re-timed
          tgt_merge=True, # also match 2 consecutive target cues (a sentence split in two)
          min_seg=60.0,   # s: a segment shorter than this is a mis-match, not a cut -> merged into its neighbour
-         deadband=0.5)   # s: a single constant correction smaller than this = natural FR/VO bias -> leave file untouched
+         deadband=0.5,   # s: a single constant correction smaller than this = natural FR/VO bias -> leave file untouched
+         extra_lines="keep")  # lines the video has no room for (a scene or a recap it lacks, a credit):
+                              # "keep" where the output and the reference are both silent, else drop; "drop" always
 # Drift only comes from frame-rate conversions, i.e. a handful of ratios for the whole file.
 FPS = [23.976, 24.0, 25.0, 29.97, 30.0]
 DRIFTS = sorted({round(a / b - 1, 6) for a in FPS for b in FPS if a / b - 1 and abs(a / b - 1) < 0.3} | {0.0})
@@ -211,41 +213,71 @@ def sync(tgt, ref, p=P, embed_fn=None):
     ends = {s: e for s, e, _ in tgt}
     spoken = sorted((s, e) for s, e, _ in ref); starts = [s for s, _ in spoken]
     def place(s, e):
-        """Offset of a cue, or None when the video has no room for it. Between two segments
-        (a cut) the cue may follow either one; it is kept only where it neither runs into the
-        other segment nor lands where the reference says nothing: lines of a scene that the
-        video does not have are dropped. Before the first segment, a cue that would start before
-        0 s belongs to a part the video lacks (typically a "Previously on" recap)."""
+        """(offset, None) for a cue, or (None, candidate offsets) for an EXTRA line, one the video
+        has no room for. Between two segments (a cut) the cue may follow either one; it is placed
+        only where it neither runs into the other segment nor lands where the reference says
+        nothing: else it belongs to a scene the video does not have. Before the first segment, a
+        cue that would start before 0 s belongs to a part the video lacks (typically a "Previously
+        on" recap); its candidates are the first segment's offset, then its own time (a credit)."""
         if s < segs[0]["t0"]:
             o = offset_at(s)
-            return o if s + o >= 0 else None
+            return (o, None) if s + o >= 0 else (None, [o, 0.0])
         for prev, nxt in zip(segs, segs[1:]):
             if prev["t1"] < s < nxt["t0"]:
                 end = ends[prev["t1"]] + prev["a"] + prev["b"] * prev["t1"]
                 start = nxt["t0"] + nxt["a"] + nxt["b"] * nxt["t0"]
-                fits = [(s - prev["t1"], prev["a"] + prev["b"] * s, lambda o: e + o <= start),
-                        (nxt["t0"] - s, nxt["a"] + nxt["b"] * s, lambda o: s + o >= end)]
-                for _, o, room in sorted(fits, key=lambda f: f[0]):        # nearest segment first
+                fits = sorted([(s - prev["t1"], prev["a"] + prev["b"] * s, lambda o: e + o <= start),
+                               (nxt["t0"] - s, nxt["a"] + nxt["b"] * s, lambda o: s + o >= end)],
+                              key=lambda f: f[0])                                # nearest segment first
+                for _, o, room in fits:
                     k = bisect.bisect_left(starts, e + o)
                     if room(o) and any(se > s + o for _, se in spoken[max(0, k - 5):k]):
-                        return o
-                return None
-        return offset_at(s)
+                        return o, None
+                return None, [o for _, o, _ in fits]
+        return offset_at(s), None
+    kept_extra = 0
     if max(abs(offset_at(t)) for sg in segs for t in (sg["t0"], sg["t1"])) < p.get("deadband", 0):
         out = [[s, e, x] for s, e, x in tgt]    # already in sync: do not move it by the FR/VO bias
     else:
+        placed = [(i, place(s, e)) for i, (s, e, _) in enumerate(tgt)]
         # a cue that would end before 0 s cannot be shown (the video starts later); one that
         # straddles 0 s starts at 0
-        moved = sorted(([max(0.0, s + o), e + o, x], i) for i, (s, e, x) in enumerate(tgt)
-                       for o in [place(s, e)] if o is not None and e + o > 0.3)
+        moved = sorted(([max(0.0, tgt[i][0] + o), tgt[i][1] + o, tgt[i][2]], i)
+                       for i, (o, _) in placed if o is not None and tgt[i][1] + o > 0.3)
         # trim only the overlaps created at cut points: the file's own overlaps (two speakers,
         # a sign over dialogue) are left as they are
         for (a, i), (b, j) in zip(moved, moved[1:]):
             if a[1] > b[0] and a[0] < b[0] and not (tgt[i][1] > tgt[j][0] and tgt[i][0] < tgt[j][0]):
                 a[1] = max(a[0] + 0.3, b[0] - 0.04)
         out = [c for c, _ in moved]
+        if p.get("extra_lines", "keep") == "keep":
+            # Extra lines are kept only where nothing is shown and nothing is said: they never
+            # overlap another line, nor dialogue that the reference has. Consecutive extra lines
+            # (less than 10 s apart) form a block, kept whole or not at all: a credit fits in a
+            # silence, a recap or a scene the video lacks never does, and a few of its lines
+            # scattered in the pauses of the dialogue would make no sense.
+            busy = sorted([(c[0], c[1]) for c in out] + spoken)
+            def free(a, b):
+                k = bisect.bisect_left(busy, (b,))
+                return a >= 0 and not any(be > a for _, be in busy[max(0, k - 8):k])
+            extras = [(i, c) for i, (_, c) in placed if c]
+            blocks = []
+            for i, c in extras:
+                if blocks and tgt[i][0] - tgt[blocks[-1][-1][0]][1] < 10.0:
+                    blocks[-1].append((i, c))
+                else:
+                    blocks.append([(i, c)])
+            for block in blocks:
+                for n in range(len(block[0][1])):          # the same candidate for the whole block
+                    lines = [[tgt[i][0] + c[n], tgt[i][1] + c[n], tgt[i][2]] for i, c in block]
+                    if all(free(a, b) for a, b, _ in lines):
+                        out += lines; kept_extra += len(lines)
+                        for a, b, _ in lines:
+                            bisect.insort(busy, (a, b))
+                        break
+            out.sort()
     resid = np.concatenate([sg["resid"] for sg in segs])
-    stats = {"status": "ok", "tgt_cues": len(tgt), "dropped": len(tgt) - len(out),
+    stats = {"status": "ok", "tgt_cues": len(tgt), "dropped": len(tgt) - len(out), "kept_extra": kept_extra,
              "embeddable": len(ti), "chain": len(chain),
              "anchors": len(anchors),
              "coverage": round(len({c for a in keep for c in chain[a][::3]}) / len(ti), 3),
