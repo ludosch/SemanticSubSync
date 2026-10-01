@@ -45,9 +45,11 @@ def test_side_path(video, sub, expected):
 
 def test_read_srt_cp1252(tmp_path):
     p = tmp_path / "a.srt"
-    # French on purpose: accented letters are where cp1252 and UTF-8 differ
-    p.write_bytes("1\n00:00:01,000 --> 00:00:02,000\nÇa été déjà là\n".encode("cp1252"))
-    assert media.read_srt(str(p))[0][2] == "Ça été déjà là"
+    # French on purpose, no language tag in the name: accented letters are where cp1252 and
+    # UTF-8 differ (a real line: a few % of accented letters, as in French subtitles)
+    line = "Ça a déjà été dit, mais il faut que tu le saches maintenant."
+    p.write_bytes(f"1\n00:00:01,000 --> 00:00:02,000\n{line}\n".encode("cp1252"))
+    assert media.read_srt(str(p))[0][2] == line
 
 
 def test_read_srt_utf8_bom(tmp_path):

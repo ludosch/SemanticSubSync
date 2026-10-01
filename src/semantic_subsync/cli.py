@@ -24,6 +24,9 @@ def parser():
     ap.add_argument("-o", "--output", help="where to write the result (default: SUBTITLE.synced.srt)")
     ap.add_argument("--track", type=int, metavar="INDEX",
                     help="with a video reference: use this stream index (see ffprobe) instead of the fullest track")
+    ap.add_argument("--lang", metavar="CODE",
+                    help="language of SUBTITLE (e.g. fr, ru), to read files that are not UTF-8 "
+                         "(default: the tag in its name, as in Movie.ru.srt)")
     ap.add_argument("--min-coverage", type=float, default=core.MIN_COVERAGE, metavar="X",
                     help=f"refuse below this share of anchored lines (default {core.MIN_COVERAGE})")
     ap.add_argument("--json", action="store_true", help="print the decision and statistics as JSON")
@@ -52,7 +55,7 @@ def main(argv=None):
             return EXIT_ERROR
         ref, ref_desc = found
 
-    status, cues, st = core.resync(media.read_srt(a.subtitle), ref, min_coverage=a.min_coverage)
+    status, cues, st = core.resync(media.read_srt(a.subtitle, a.lang), ref, min_coverage=a.min_coverage)
     if cues is not None:
         core.write(out_path, cues)
     if a.json:

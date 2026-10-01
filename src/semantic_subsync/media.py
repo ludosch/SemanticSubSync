@@ -8,15 +8,67 @@ VIDEO_EXT = (".mkv", ".mp4", ".m4v", ".avi", ".mov", ".ts", ".webm")
 MIN_REF_CUES = 20          # fewer cues: a forced/signs track or a partial one, not a usable reference
 
 
-def read_srt(path):
-    """core.parse, but downloaded subtitles are sometimes cp1252 rather than UTF-8."""
-    raw = open(path, "rb").read()
-    for enc in ("utf-8-sig", "cp1252"):
-        try:
-            return core.parse_text(raw.decode(enc))
-        except UnicodeDecodeError:
-            continue
-    return core.parse_text(raw.decode("utf-8", errors="replace"))
+# Legacy Windows code page of each language, for subtitles that are not UTF-8 (most older
+# downloads). A single-byte code page decodes ANY bytes without error, so guessing one blindly
+# turns Cyrillic or Greek into Latin gibberish: the subtitle's language decides instead.
+_CODEPAGES = {
+    "cp1252": "en eng fr fre fra es spa pt por pt-br pob br it ita de ger deu nl dut nld sv swe "
+              "da dan no nor nb nob fi fin ca cat gl glg id ind ms may msa eu baq eus",
+    "cp1250": "pl pol cs cze ces cz sk slo slk hu hun ro rum ron hr hrv sl slv bs bos sq alb sqi",
+    "cp1251": "ru rus uk ukr ua bg bul mk mac mkd be bel",
+    "cp1253": "el gre ell gr",
+    "cp1254": "tr tur az aze",
+    "cp1255": "he heb",
+    "cp1256": "ar ara fa per fas ur urd",
+    "cp1257": "lt lit lv lav et est",
+    "cp1258": "vi vie",
+    "cp874": "th tha",
+    "cp932": "ja jpn jp",
+    "cp949": "ko kor",
+}
+CODEPAGE = {lang: cp for cp, langs in _CODEPAGES.items() for lang in langs.split()}
+
+
+def language_of(path):
+    """Language tag of a subtitle named like most tools do: 'Movie.fr.srt', 'Show.S01E01.pt-BR.hi.srt'."""
+    for tok in reversed(os.path.basename(path).lower().split(".")[1:-1]):
+        if tok in CODEPAGE or tok in ("zh", "chi", "zho", "cn", "zh-cn", "zh-tw", "sr", "srp"):
+            return tok
+    return None
+
+
+def decode(raw, lang=None):
+    """Text of a subtitle file: UTF-8/UTF-16 when it is, else the code page of `lang`, else cp1252
+    unless it reads as gibberish (another script), else a guess (charset-normalizer)."""
+    if raw.startswith((b"\xff\xfe", b"\xfe\xff")):
+        return raw.decode("utf-16")
+    try:
+        return raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        pass
+    if lang in CODEPAGE:
+        return raw.decode(CODEPAGE[lang], errors="replace")
+    # Western text read as cp1252 has a few accented letters (0-11 % measured on real files);
+    # Cyrillic, Greek or Arabic read as cp1252 is almost only accented letters ("Ïðèâåò", 94-99 %),
+    # Chinese ~40 %. Statistical guessing is unreliable on short Western files, so it only gets
+    # the second case.
+    western = raw.decode("cp1252", errors="replace")
+    letters = [c for c in western if c.isalpha()]
+    if sum("À" <= c <= "ÿ" for c in letters) <= 0.25 * len(letters):
+        return western
+    try:
+        from charset_normalizer import from_bytes
+        best = from_bytes(raw).best()
+        if best is not None:
+            return str(best)
+    except ImportError:
+        pass
+    return raw.decode("cp1252", errors="replace")
+
+
+def read_srt(path, lang=None):
+    """core.parse for any encoding. `lang` (e.g. 'fr') defaults to the tag in the file name."""
+    return core.parse_text(decode(open(path, "rb").read(), lang or language_of(path)))
 
 
 def embedded_references(video, workdir, streams=None):
@@ -39,7 +91,7 @@ def embedded_references(video, workdir, streams=None):
         p = os.path.join(workdir, f"{s['index']}.srt")
         if os.path.exists(p) and os.path.getsize(p) > 0:
             tags = s.get("tags", {})
-            out.append((core.parse(p), f"#{s['index']} {tags.get('language', 'und')} {tags.get('title', '')}".strip()))
+            out.append((read_srt(p), f"#{s['index']} {tags.get('language', 'und')} {tags.get('title', '')}".strip()))
     return out
 
 

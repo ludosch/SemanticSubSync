@@ -6,9 +6,27 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- `--lang` and reading of non-UTF-8 subtitles in the code page of their language (from the
+  file name or `--lang`); Cyrillic, Greek, Arabic or Chinese files were read as gibberish.
+- `tools/bench_real.py` and `pytest -m corpus`: measurement on a local folder of real
+  downloaded subtitles; README section "Real downloaded subtitles" with the author's figures.
+- README: the languages of the model.
+
 ### Changed
+- Lines of a scene that the video does not have are left out instead of being stacked on the
+  lines around the cut. `--json` reports how many in `dropped`.
+- Lines that would start before 0 s (a "Previously on" recap the video lacks) are left out
+  instead of being written at 00:00:00.
+- The output is always in time order.
+- New dependency: `charset-normalizer`, to guess the encoding of a non-UTF-8 file whose
+  language is unknown.
 - README: one schematic per case (offset, frame rate, missing lines, extra lines, wrong
   reference), drawn by `examples/lighthouse/plot.py`.
+
+### Fixed
+- A subtitle in sync whose own lines overlap (e.g. a watermark) was reported as corrected and
+  rewritten. Only overlaps created by a correction are trimmed now.
 
 ## [0.9.0] - 2026-10-01
 

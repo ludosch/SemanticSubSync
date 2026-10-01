@@ -66,6 +66,55 @@ def test_target_has_extra_scene():
     assert out is not None and accuracy(out, kept) >= 0.95, st
 
 
+@pytest.mark.parametrize("seed", [4, 5, 6])
+def test_lines_of_a_scene_the_video_lacks_are_dropped(seed):
+    """The video is the shorter cut: the reference has no room for the extra scene, so its lines
+    are left out instead of being stacked on the lines around it."""
+    base = dialogue(n=300, seed=seed)
+    t0 = base[100][0]
+    ref = tgt_cues(base, **cut(t0, base[115][0] - t0), text="line k{k}")   # the video's timeline
+    out, st = run(tgt_cues(base, warp=lambda t: t + 2.0), ref)
+    kept = [c for c in base if not 100 <= c[2] < 115]
+    assert sorted(int(x.split("k")[1]) for _, _, x in out) == [c[2] for c in kept], st
+    assert st["dropped"] == 15, st
+    assert out == sorted(out), "output must be in time order"
+
+
+@pytest.mark.parametrize("recap", [10, 25])
+def test_recap_the_video_lacks_is_dropped_not_stacked_at_zero(recap):
+    """Real case, Game of Thrones S02E03: one release opens with a 90 s "Previously on" recap that
+    the video lacks. The recap lines would start before 0 s: they are left out instead of being
+    written at 00:00:00,000."""
+    base = dialogue(n=300, seed=21, start=1.0)
+    t0 = base[recap][0] - 0.5
+    ref = [[s - t0, e - t0, f"line k{k}"] for s, e, k in base[recap:]]
+    out, st = run(tgt_cues(base), ref)
+    assert st["dropped"] == recap, st
+    assert min(s for s, _, _ in out) > 0
+    assert accuracy(out, [[s - t0, e - t0, k] for s, e, k in base[recap:]]) >= 0.95, st
+
+
+def test_own_overlaps_do_not_count_as_a_correction():
+    """Real case: a site watermark shown over the first line. In sync, the file stays untouched;
+    the overlap is the file's own, not something to repair."""
+    base = dialogue(n=300, seed=22)
+    tgt = tgt_cues(base, warp=lambda t: t + 0.2)
+    tgt.insert(0, [0.5, tgt[0][0] + 1.0, "www.example.net"])
+    out, st = run(tgt, ref_cues(base))
+    assert out == tgt, st
+
+
+def test_correction_keeps_the_files_own_overlaps():
+    """Two speakers overlapping in the target stay overlapping once shifted."""
+    base = dialogue(n=300, seed=23)
+    tgt = tgt_cues(base, warp=lambda t: t + 6.0)
+    tgt[50][1] = tgt[51][0] + 1.0
+    out, st = run(tgt, ref_cues(base))
+    k = next(i for i, c in enumerate(out) if c[2] == tgt[50][2])
+    assert out[k][1] - out[k][0] == pytest.approx(tgt[50][1] - tgt[50][0])
+    assert accuracy(out, base) >= 0.95, st
+
+
 # ---------- already in sync: never touch ----------
 
 @pytest.mark.parametrize("bias", [0.0, 0.25, -0.4])

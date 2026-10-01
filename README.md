@@ -104,11 +104,15 @@ line, blue in sync, orange out of sync, green fixed):
    dialogue. Anchors whose offset disagrees with their neighbours are dropped.
 4. One frame-rate ratio is chosen for the whole file among the standard ones
    (23.976 / 24 / 25 / 29.97 / 30). The timeline is then split into constant-offset segments,
-   which absorbs cuts and inserted scenes.
+   which absorbs cuts and inserted scenes. At a cut, a line that would land where the
+   reference says nothing belongs to a scene the video does not have: it is left out. So is a
+   line that would start before 0 s, typically a "Previously on" recap that the video lacks.
+   The result is always in time order.
 5. Guards:
    - fewer than 25 % of lines anchored: **refused**, the reference does not say the same thing;
    - every correction smaller than 0.5 s: the file is **left untouched** (this is the natural gap
-     between two languages, not a sync problem);
+     between two languages, not a sync problem). Lines that overlap in the file itself (a
+     watermark, two speakers) are not a reason to rewrite it, and a correction keeps them;
    - segments shorter than 60 s are treated as local mismatches, not cuts.
 
 No AI service, no network access once the model is downloaded, and the same input always gives
@@ -143,6 +147,43 @@ Speed on the author's NAS (2-core Celeron J4025), with the int8 model (see [Mode
 about 85 s and 590 MB of RAM at peak for a full movie. It depends on the hardware and on the
 number of lines.
 
+### Real downloaded subtitles
+
+The benchmark above starts from correct tracks. To see the behaviour on files as they are found
+online, the author downloaded 66 subtitles from a public subtitle site for 8 TV episodes (Game
+of Thrones S01E01 and S02E03, Breaking Bad S05E09, Lost S04E02, Friends S05E08, The Office
+S03E10, The Sopranos S04E01, Squid Game S01E01), in 16 languages: Arabic, Chinese, English,
+French, German, Greek, Hungarian, Italian, Japanese, Polish, Portuguese (Portugal and Brazil),
+Russian, Spanish, Swedish, Turkish. Each one was aligned on the English subtitle of its episode,
+then the English one on it: 114 pairs. These files are copyrighted and are not in the
+repository; [`tools/bench_real.py`](tools/bench_real.py) runs the same measurement on any such
+folder.
+
+There is no ground truth here, so the measure is a proxy: the lines that have **one** obvious
+translation in the other file (similarity 0.70 or more, 0.15 above any other line) should start
+within 0.5 s / 1 s of it. Two translations are rarely cut the same way, so even a pair in sync
+stays below 100 %.
+
+| Decision | Pairs | Lines within 0.5 s / 1 s of their translation (median) |
+|---|---|---|
+| Left untouched (already in sync) | 66 | 92.8 % / 97.4 % |
+| Corrected | 44 | before: 1.9 % / 4.5 % — after: 82.7 % / 91.5 % |
+| Refused | 4 | — |
+
+- The corrected pairs covered the cases the tool is made for: 25 fps versus 23.976 fps
+  (Friends, The Sopranos, Lost), cuts and scenes added or removed (The Office, 3 to 6
+  segments; the extended DVD cut of Friends), a 90 s recap present in only one release (Game of
+  Thrones S02E03). 28 of the 44 reached 90 % or more at 1 s; the lowest was 69 % (a Portuguese
+  translation of The Office, cut very differently from the English one).
+- 2 of the 44 ended slightly below the untouched file: Game of Thrones S01E01 in Greek, 95.7 %
+  then 93.2 % at 1 s, for a correction of about 0.5 s, just above the deadband.
+- The 4 refusals are 2 files in both directions, whose content belongs to another episode than
+  their name says (the dialogue and the duration do not match the reference).
+- 170 lines were left out, 140 of them being the 35-line recap of one Game of Thrones release,
+  aligned on releases without it. Without that, they would have been stacked at 00:00:00.
+- No line came out of time order or before 0 s, and no overlap longer than 0.3 s was created.
+- 47 of the 66 files were not UTF-8 (see [Usage](#usage)).
+
 This is not a published benchmark. The test suite reproduces each distortion on synthetic
 dialogue (see [Development](#development)).
 
@@ -171,7 +212,7 @@ docker load -i semantic-subsync-0.9.0-docker-amd64.tar.gz
 ## Usage
 
 ```bash
-semantic-subsync SUBTITLE REFERENCE [-o OUTPUT] [--track INDEX] [--min-coverage X] [--json]
+semantic-subsync SUBTITLE REFERENCE [-o OUTPUT] [--track INDEX] [--lang CODE] [--min-coverage X] [--json]
 ```
 
 - `REFERENCE` is a `.srt` in sync with the video, or the video itself. With a video, the
@@ -180,7 +221,11 @@ semantic-subsync SUBTITLE REFERENCE [-o OUTPUT] [--track INDEX] [--min-coverage 
 - The input subtitle is never modified. The result goes to `SUBTITLE.synced.srt` by default.
 - Already in sync: nothing is written.
 - Exit status: `0` corrected or already in sync, `1` refused, `2` error.
-- `--json` prints the decision and the statistics (coverage, segments, offsets).
+- `--json` prints the decision and the statistics (coverage, segments, offsets, lines dropped).
+- Files that are not UTF-8 (most older downloads) are read in the code page of their language,
+  taken from the file name (`Movie.ru.srt`, `Show.S01E01.pt-BR.srt`) or from `--lang ru`.
+  Without either, a Western code page is assumed unless the text then looks like another
+  script, in which case the encoding is guessed.
 
 From Python:
 
@@ -208,13 +253,18 @@ The engine knows nothing about media servers or subtitle managers. Integrations 
 | `SEMSYNC_CACHE` | Optional folder where embeddings are cached on disk |
 
 The model is published by [sentence-transformers](https://www.sbert.net/) under the Apache 2.0
-license.
+license. Both subtitles must be in languages it was trained on, which its
+[model card](https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2)
+lists as: ar, bg, ca, cs, da, de, el, en, es, et, fa, fi, fr, fr-ca, gl, gu, he, hi, hr, hu, hy,
+id, it, ja, ka, ko, ku, lt, lv, mk, mn, mr, ms, my, nb, nl, pl, pt, pt-br, ro, ru, sk, sl, sq,
+sr, sv, th, tr, uk, ur, vi, zh-cn, zh-tw. Another language may partly work, untested.
 
 ## Development
 
 ```bash
 mise x -- uv run pytest                                    # fast, no model needed
 SEMSYNC_TEST_MODEL=1 mise x -- uv run --extra model pytest -m model   # end to end with the real model
+SEMSYNC_CORPUS=~/corpus SEMSYNC_CACHE=~/corpus/emb mise x -- uv run --extra model pytest -m corpus   # local real subtitles
 ```
 
 Unit tests run on **synthetic** dialogue (`tests/synth.py`). Each line carries a "concept"
@@ -222,6 +272,10 @@ token such as `k17`, which a deterministic fake model turns into a fixed vector:
 languages of one concept score about 0.9, unrelated lines about 0.1, like the real model. This
 tests the algorithm independently of the model, against every distortion of the benchmark. No
 film extract is stored in the repository.
+
+The `corpus` tests run every pair of a local folder of real subtitles (see
+[Real downloaded subtitles](#real-downloaded-subtitles)) and check the invariants, and that no
+correction is clearly worse than the untouched file. Skipped when `SEMSYNC_CORPUS` is not set.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) and the [changelog](CHANGELOG.md).
 

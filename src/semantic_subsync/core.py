@@ -7,6 +7,7 @@ language (e.g. the original EN) by matching cues on MEANING, not on timing shape
 3. weighted longest increasing chain -> monotonic anchors
 4. drop anchors whose offset disagrees with their neighbours (robust local median)
 5. every target cue gets the smoothed offset of its anchor neighbourhood
+6. at a cut, cues that land where the reference says nothing are dropped (a scene the video lacks)
 
 Command line: see cli.py.
 """
@@ -207,16 +208,45 @@ def sync(tgt, ref, p=P, embed_fn=None):
                 prev = segs[k-1]      # gap between two segments (a cut): nearest segment wins
                 return (prev["a"] + prev["b"] * t) if t - prev["t1"] <= sg["t0"] - t else sg["a"] + sg["b"] * t
         sg = segs[-1]; return sg["a"] + sg["b"] * t
+    ends = {s: e for s, e, _ in tgt}
+    spoken = sorted((s, e) for s, e, _ in ref); starts = [s for s, _ in spoken]
+    def place(s, e):
+        """Offset of a cue, or None when the video has no room for it. Between two segments
+        (a cut) the cue may follow either one; it is kept only where it neither runs into the
+        other segment nor lands where the reference says nothing: lines of a scene that the
+        video does not have are dropped. Before the first segment, a cue that would start before
+        0 s belongs to a part the video lacks (typically a "Previously on" recap)."""
+        if s < segs[0]["t0"]:
+            o = offset_at(s)
+            return o if s + o >= 0 else None
+        for prev, nxt in zip(segs, segs[1:]):
+            if prev["t1"] < s < nxt["t0"]:
+                end = ends[prev["t1"]] + prev["a"] + prev["b"] * prev["t1"]
+                start = nxt["t0"] + nxt["a"] + nxt["b"] * nxt["t0"]
+                fits = [(s - prev["t1"], prev["a"] + prev["b"] * s, lambda o: e + o <= start),
+                        (nxt["t0"] - s, nxt["a"] + nxt["b"] * s, lambda o: s + o >= end)]
+                for _, o, room in sorted(fits, key=lambda f: f[0]):        # nearest segment first
+                    k = bisect.bisect_left(starts, e + o)
+                    if room(o) and any(se > s + o for _, se in spoken[max(0, k - 5):k]):
+                        return o
+                return None
+        return offset_at(s)
     if max(abs(offset_at(t)) for sg in segs for t in (sg["t0"], sg["t1"])) < p.get("deadband", 0):
         out = [[s, e, x] for s, e, x in tgt]    # already in sync: do not move it by the FR/VO bias
     else:
-        out = [[s + offset_at(s), e + offset_at(s), x] for s, e, x in tgt]
+        # a cue that would end before 0 s cannot be shown (the video starts later); one that
+        # straddles 0 s starts at 0
+        moved = sorted(([max(0.0, s + o), e + o, x], i) for i, (s, e, x) in enumerate(tgt)
+                       for o in [place(s, e)] if o is not None and e + o > 0.3)
+        # trim only the overlaps created at cut points: the file's own overlaps (two speakers,
+        # a sign over dialogue) are left as they are
+        for (a, i), (b, j) in zip(moved, moved[1:]):
+            if a[1] > b[0] and a[0] < b[0] and not (tgt[i][1] > tgt[j][0] and tgt[i][0] < tgt[j][0]):
+                a[1] = max(a[0] + 0.3, b[0] - 0.04)
+        out = [c for c, _ in moved]
     resid = np.concatenate([sg["resid"] for sg in segs])
-    # no overlaps created at cut points
-    for a in range(len(out) - 1):
-        if out[a][1] > out[a+1][0] and out[a][0] < out[a+1][0]:
-            out[a][1] = max(out[a][0] + 0.3, out[a+1][0] - 0.04)
-    stats = {"status": "ok", "tgt_cues": len(tgt), "embeddable": len(ti), "chain": len(chain),
+    stats = {"status": "ok", "tgt_cues": len(tgt), "dropped": len(tgt) - len(out),
+             "embeddable": len(ti), "chain": len(chain),
              "anchors": len(anchors),
              "coverage": round(len({c for a in keep for c in chain[a][::3]}) / len(ti), 3),
              "mean_sim": round(float(np.mean([chain[a][2] for a in keep])), 3),
@@ -284,6 +314,6 @@ def resync(tgt, ref, p=P, embed_fn=None, min_coverage=MIN_COVERAGE):
     out, st = sync(tgt, ref, p, embed_fn)
     if out is None or (st.get("coverage") or 0) < min_coverage:
         return "refused", None, st
-    if all(abs(a[0] - b[0]) < 1e-6 and abs(a[1] - b[1]) < 1e-6 for a, b in zip(out, tgt)):
+    if len(out) == len(tgt) and all(abs(a[0] - b[0]) < 1e-6 and abs(a[1] - b[1]) < 1e-6 for a, b in zip(out, tgt)):
         return "in_sync", None, st
     return "corrected", out, st
