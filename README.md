@@ -5,9 +5,8 @@
 Fix the timing of a subtitle by comparing **what is said**, line by line, with a subtitle that is
 already in sync, even when the two are in different languages.
 
-```console
-$ semantic-subsync Movie.fr.srt Movie.mkv     # reference: the subtitle embedded in the video
-corrected -> Movie.fr.synced.srt (2 segment(s), largest shift +4.27 s) [reference: #3 eng English]
+```bash
+semantic-subsync Movie.fr.srt Movie.mkv     # reference: the subtitle embedded in the video
 ```
 
 ## Why this project exists
@@ -27,6 +26,40 @@ original language. SemanticSubSync uses it as a reference and matches lines **by
 with a small multilingual sentence model: "Where did you put the keys?" and "Où as-tu mis les
 clés ?" are recognized as the same line. When too few lines match (wrong reference, commentary
 track, different cut), it **refuses** and leaves the file alone.
+
+## Example
+
+A French subtitle was downloaded for a 10-minute episode (an
+[original dialogue](examples/lighthouse) written for this project). It was timed on a TV
+broadcast: 25 fps instead of the video's 23.976, and one 70-second scene missing. The video
+carries an English subtitle, in sync.
+
+```console
+$ semantic-subsync downloaded.fr.srt reference.en.srt
+corrected -> downloaded.fr.synced.srt (2 segment(s), largest shift +90.69 s) [reference: reference.en.srt]
+```
+
+| Line | Heard in the video at | Before | After |
+|---|---|---|---|
+| Il y a quelqu'un là-haut ? | 0:20.0 | 0:19.2 (0.8 s early) | 0:20.0 ✅ |
+| Au crochet près de la porte. Pourquoi ? | 4:18.9 | 4:08.3 (10.6 s early) | 4:18.9 ✅ |
+| *the missing scene* | 4:45 to 5:55 | | |
+| Encore. Plus fort cette fois. | 6:18.7 | 4:55.9 (82.8 s early) | 6:18.7 ✅ |
+| Oui ? | 9:26.5 | 7:56.0 (90.5 s early) | 9:26.4 ✅ |
+
+The same files given to the usual tools, each with the English subtitle as reference:
+
+![Situation 1, error of each line](docs/example-missing-scene.svg)
+
+| Tool | Scene missing + 25 fps | Extra scene | Wrong reference (commentary track) |
+|---|---|---|---|
+| alass 2.0.0 | ✅ 100 % | ❌ 87 %, up to 17 s off | ❌ moves lines by up to 96 s |
+| ffsubsync 0.5.1 (with or without `--split-penalty`) | ❌ 52 %, 70-81 s off | ❌ 52 %, 61-70 s off | ❌ moves lines by up to 96 s |
+| LAPSE 2.2.3 | ❌ 52 %, 70 s off, says "solid" | ❌ 52 %, 70 s off, says "solid" | ❌ moves lines by up to 75 s, says "solid" |
+| **SemanticSubSync** | ✅ **100 %** | ✅ **100 %** | ✅ **refuses, file left alone** |
+
+Share of lines within 300 ms of their true position. The three situations, the scripts to rerun
+them and a chart for each are in [`examples/lighthouse`](examples/lighthouse).
 
 ## Scope
 

@@ -5,9 +5,8 @@
 Recale un sous-titre en comparant **ce qui est dit**, réplique par réplique, avec un sous-titre
 déjà synchronisé, même quand les deux sont dans des langues différentes.
 
-```console
-$ semantic-subsync Film.fr.srt Film.mkv     # référence : le sous-titre intégré à la vidéo
-corrected -> Film.fr.synced.srt (2 segment(s), largest shift +4.27 s) [reference: #3 eng English]
+```bash
+semantic-subsync Film.fr.srt Film.mkv     # référence : le sous-titre intégré à la vidéo
 ```
 
 ## Pourquoi ce projet existe
@@ -30,6 +29,42 @@ répliques **par leur sens** grâce à un petit modèle de phrases multilingue :
 the keys? » et « Où as-tu mis les clés ? » sont reconnues comme la même réplique. Quand trop peu
 de répliques correspondent (mauvaise référence, piste commentaire, montage différent), il
 **refuse** et ne touche pas au fichier.
+
+## Exemple
+
+Un sous-titre français a été téléchargé pour un épisode de 10 minutes (un
+[dialogue original](examples/lighthouse) écrit pour ce projet). Il a été calé sur une diffusion
+TV : 25 i/s au lieu des 23,976 de la vidéo, et une scène de 70 secondes en moins. La vidéo
+contient un sous-titre anglais, bien calé.
+
+```console
+$ semantic-subsync downloaded.fr.srt reference.en.srt
+corrected -> downloaded.fr.synced.srt (2 segment(s), largest shift +90.69 s) [reference: reference.en.srt]
+```
+
+| Réplique | Dite dans la vidéo à | Avant | Après |
+|---|---|---|---|
+| Il y a quelqu'un là-haut ? | 0:20.0 | 0:19.2 (0,8 s d'avance) | 0:20.0 ✅ |
+| Au crochet près de la porte. Pourquoi ? | 4:18.9 | 4:08.3 (10,6 s d'avance) | 4:18.9 ✅ |
+| *la scène absente* | de 4:45 à 5:55 | | |
+| Encore. Plus fort cette fois. | 6:18.7 | 4:55.9 (82,8 s d'avance) | 6:18.7 ✅ |
+| Oui ? | 9:26.5 | 7:56.0 (90,5 s d'avance) | 9:26.4 ✅ |
+
+Les mêmes fichiers confiés aux outils habituels, chacun avec le sous-titre anglais comme
+référence :
+
+![Situation 1, erreur de chaque réplique](docs/example-missing-scene.svg)
+
+| Outil | Scène absente + 25 i/s | Scène en trop | Mauvaise référence (piste commentaire) |
+|---|---|---|---|
+| alass 2.0.0 | ✅ 100 % | ❌ 87 %, jusqu'à 17 s d'écart | ❌ déplace des répliques de 96 s au plus |
+| ffsubsync 0.5.1 (avec ou sans `--split-penalty`) | ❌ 52 %, 70 à 81 s d'écart | ❌ 52 %, 61 à 70 s d'écart | ❌ déplace des répliques de 96 s au plus |
+| LAPSE 2.2.3 | ❌ 52 %, 70 s d'écart, se dit « solid » | ❌ 52 %, 70 s d'écart, se dit « solid » | ❌ déplace des répliques de 75 s au plus, se dit « solid » |
+| **SemanticSubSync** | ✅ **100 %** | ✅ **100 %** | ✅ **refuse, fichier intact** |
+
+Part des répliques à moins de 300 ms de leur vraie position. Les trois situations, les scripts
+pour les rejouer et un graphique pour chacune sont dans
+[`examples/lighthouse`](examples/lighthouse) (en anglais).
 
 ## Cadre d'utilisation
 

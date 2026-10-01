@@ -1,0 +1,420 @@
+1
+00:00:20,000 --> 00:00:22,190
+Is anyone up here?
+
+2
+00:00:24,323 --> 00:00:27,393
+Careful, the third step is broken.
+
+3
+00:00:28,921 --> 00:00:32,541
+Tom? I thought you left on the morning boat.
+
+4
+00:00:35,820 --> 00:00:39,385
+The boat never came. The sea was too rough.
+
+5
+00:00:40,638 --> 00:00:43,818
+So you climbed a lighthouse to wait?
+
+6
+00:00:46,694 --> 00:00:50,259
+I came to fix the radio. Nobody else would.
+
+7
+00:00:52,539 --> 00:00:55,829
+That radio hasn't worked in ten years.
+
+8
+00:00:57,032 --> 00:01:00,707
+Eleven. My father was the last one to use it.
+
+9
+00:01:03,483 --> 00:01:06,058
+I'm sorry. I didn't know.
+
+10
+00:01:07,189 --> 00:01:10,644
+Hand me the small screwdriver, would you?
+
+11
+00:01:13,162 --> 00:01:14,857
+This one?
+
+12
+00:01:16,101 --> 00:01:19,061
+No, the one with the red handle.
+
+13
+00:01:20,379 --> 00:01:23,449
+Why does it matter so much to you?
+
+14
+00:01:25,935 --> 00:01:30,050
+Because the island has no other way to call for help.
+
+15
+00:01:30,650 --> 00:01:31,850
+[wind howling]
+
+16
+00:01:33,943 --> 00:01:37,948
+The phone line went down with the storm last night.
+
+17
+00:01:41,156 --> 00:01:43,896
+And Mrs. Hale is still sick.
+
+18
+00:01:46,936 --> 00:01:50,501
+The doctor is on the mainland until Friday.
+
+19
+00:01:51,718 --> 00:01:54,678
+Then let's make this thing talk.
+
+20
+00:01:57,727 --> 00:02:01,017
+Do you know anything about old radios?
+
+21
+00:02:02,191 --> 00:02:06,416
+My grandmother built one from a kit when I was a child.
+
+22
+00:02:08,189 --> 00:02:10,049
+Did it work?
+
+23
+00:02:12,998 --> 00:02:16,288
+It caught a station from Norway, once.
+
+24
+00:02:17,754 --> 00:02:19,504
+Only once?
+
+25
+00:02:21,971 --> 00:02:25,976
+She said once was enough to prove it could be done.
+
+26
+00:02:28,868 --> 00:02:32,378
+Look at this wire. It's completely burned.
+
+27
+00:02:35,376 --> 00:02:37,676
+Lightning, probably.
+
+28
+00:02:40,637 --> 00:02:44,147
+Is there any copper wire in the storeroom?
+
+29
+00:02:47,534 --> 00:02:50,769
+There's a whole box under the stairs.
+
+30
+00:02:52,130 --> 00:02:55,200
+I'll get it. Don't touch anything.
+
+31
+00:02:58,199 --> 00:03:00,554
+I wasn't planning to.
+
+32
+00:03:02,212 --> 00:03:04,567
+Here. Is this enough?
+
+33
+00:03:05,908 --> 00:03:09,253
+More than enough. Hold the lamp closer.
+
+34
+00:03:12,745 --> 00:03:15,210
+Your hands are shaking.
+
+35
+00:03:18,186 --> 00:03:21,696
+It's the cold. This room was never heated.
+
+36
+00:03:24,862 --> 00:03:26,832
+Take my scarf.
+
+37
+00:03:29,569 --> 00:03:31,319
+Thank you.
+
+38
+00:03:34,181 --> 00:03:37,691
+Now we need power. The batteries are dead.
+
+39
+00:03:41,411 --> 00:03:44,591
+What about the generator downstairs?
+
+40
+00:03:48,823 --> 00:03:52,663
+It needs fuel, and the fuel is in the boathouse.
+
+41
+00:03:54,532 --> 00:03:58,042
+In this wind? You'd be blown into the sea.
+
+42
+00:03:59,672 --> 00:04:02,742
+Then we wait for the wind to drop.
+
+43
+00:04:03,342 --> 00:04:04,542
+[waves crashing]
+
+44
+00:04:06,471 --> 00:04:09,376
+Mrs. Hale can't wait that long.
+
+45
+00:04:12,214 --> 00:04:14,844
+Is there a rope somewhere?
+
+46
+00:04:18,907 --> 00:04:21,702
+On the hook by the door. Why?
+
+47
+00:04:23,710 --> 00:04:26,780
+Tie it around my waist. I'm going.
+
+48
+00:04:27,380 --> 00:04:28,580
+[door creaks]
+
+49
+00:04:31,210 --> 00:04:33,015
+You're mad.
+
+50
+00:04:34,593 --> 00:04:37,113
+Probably. Hold on tight.
+
+51
+00:04:45,310 --> 00:04:47,720
+Mara! Can you hear me?
+
+52
+00:04:51,987 --> 00:04:55,442
+I'm at the boathouse! The door is jammed!
+
+53
+00:04:56,042 --> 00:04:57,242
+[radio static]
+
+54
+00:04:59,809 --> 00:05:02,384
+Kick it! Near the bottom!
+
+55
+00:05:05,389 --> 00:05:08,239
+It's open! I can see the cans!
+
+56
+00:05:12,303 --> 00:05:14,493
+How many are full?
+
+57
+00:05:17,927 --> 00:05:20,062
+Two! Maybe three!
+
+58
+00:05:23,142 --> 00:05:25,772
+Take two. Don't be greedy.
+
+59
+00:05:28,802 --> 00:05:31,102
+Pull me back slowly!
+
+60
+00:05:33,699 --> 00:05:36,329
+I've got you. Keep coming.
+
+61
+00:05:40,268 --> 00:05:42,513
+I'm here. I'm here.
+
+62
+00:05:45,173 --> 00:05:47,803
+You're soaked to the bone.
+
+63
+00:05:51,127 --> 00:05:53,262
+But we have fuel.
+
+64
+00:06:00,475 --> 00:06:03,710
+Pour it in. Slowly, or it will flood.
+
+65
+00:06:07,165 --> 00:06:09,355
+Now pull the cord.
+
+66
+00:06:12,620 --> 00:06:14,260
+Nothing.
+
+67
+00:06:18,736 --> 00:06:21,256
+Again. Harder this time.
+
+68
+00:06:23,252 --> 00:06:25,167
+It's running!
+
+69
+00:06:27,517 --> 00:06:30,202
+The lights are on upstairs!
+
+70
+00:06:33,542 --> 00:06:36,062
+Quick, before it stalls.
+
+71
+00:06:37,141 --> 00:06:40,486
+Switch it on. The big dial on the left.
+
+72
+00:06:43,102 --> 00:06:44,962
+Only static.
+
+73
+00:06:46,550 --> 00:06:50,390
+Turn it slowly. The coast guard is near the end.
+
+74
+00:06:51,800 --> 00:06:54,320
+Wait. Did you hear that?
+
+75
+00:06:55,527 --> 00:06:58,157
+A voice. Go back a little.
+
+76
+00:06:58,757 --> 00:06:59,957
+[wind howling]
+
+77
+00:07:01,845 --> 00:07:05,795
+This is the coast guard. Please identify yourself.
+
+78
+00:07:08,188 --> 00:07:12,083
+This is Gull Island lighthouse. We need a doctor.
+
+79
+00:07:16,292 --> 00:07:20,297
+An old woman is sick, and the phone lines are down.
+
+80
+00:07:21,879 --> 00:07:25,279
+Understood, Gull Island. How bad is she?
+
+81
+00:07:27,685 --> 00:07:31,305
+High fever since yesterday. She can't stand.
+
+82
+00:07:33,277 --> 00:07:36,952
+We'll send a boat as soon as the wind allows.
+
+83
+00:07:38,432 --> 00:07:41,887
+Probably at dawn. Keep this channel open.
+
+84
+00:07:44,393 --> 00:07:46,638
+We will. Thank you.
+
+85
+00:07:49,564 --> 00:07:52,634
+Your father would have been proud.
+
+86
+00:07:56,107 --> 00:07:59,232
+He would have said I took too long.
+
+87
+00:08:03,684 --> 00:08:06,424
+Eleven years is a long time.
+
+88
+00:08:08,756 --> 00:08:12,321
+Not for the radio. For coming back up here.
+
+89
+00:08:14,128 --> 00:08:16,538
+Why did you stay away?
+
+90
+00:08:17,829 --> 00:08:21,614
+Every step of this staircase reminds me of him.
+
+91
+00:08:23,143 --> 00:08:25,443
+Even the broken one?
+
+92
+00:08:28,748 --> 00:08:32,423
+Especially the broken one. He never fixed it.
+
+93
+00:08:33,465 --> 00:08:36,590
+Maybe we should leave it like that.
+
+94
+00:08:37,190 --> 00:08:38,390
+[waves crashing]
+
+95
+00:08:40,499 --> 00:08:42,579
+Maybe we should.
+
+96
+00:08:43,594 --> 00:08:46,884
+Look. The sky is clearing in the west.
+
+97
+00:08:49,350 --> 00:08:51,595
+The boat will come.
+
+98
+00:08:53,887 --> 00:08:56,572
+I'll go and tell Mrs. Hale.
+
+99
+00:08:59,554 --> 00:09:02,734
+Take the lamp. The path is slippery.
+
+100
+00:09:07,070 --> 00:09:08,710
+And you?
+
+101
+00:09:11,514 --> 00:09:14,529
+Someone has to stay by the radio.
+
+102
+00:09:17,691 --> 00:09:20,541
+Then I'll bring you some soup.
+
+103
+00:09:23,908 --> 00:09:25,383
+Mara?
+
+104
+00:09:26,572 --> 00:09:27,992
+Yes?
+
+105
+00:09:32,140 --> 00:09:34,550
+Thank you for staying.
+

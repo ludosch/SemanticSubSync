@@ -1,0 +1,347 @@
+1
+00:00:19,968 --> 00:00:22,268
+Il y a quelqu'un là-haut ?
+
+2
+00:00:24,293 --> 00:00:27,393
+Attention, la troisième marche est cassée.
+
+3
+00:00:28,802 --> 00:00:32,802
+Tom ? Je croyais que tu étais parti avec le bateau du matin.
+
+4
+00:00:35,860 --> 00:00:39,510
+Le bateau n'est jamais venu. La mer était trop forte.
+
+5
+00:00:40,507 --> 00:00:43,907
+Alors tu as grimpé dans un phare pour attendre ?
+
+6
+00:00:46,564 --> 00:00:50,964
+Je suis venu réparer la radio. Personne d'autre ne voulait le faire.
+
+7
+00:00:52,451 --> 00:00:55,551
+Cette radio ne marche plus depuis dix ans.
+
+8
+00:00:56,930 --> 00:01:00,230
+Onze. Mon père a été le dernier à s'en servir.
+
+9
+00:01:03,435 --> 00:01:06,135
+Je suis désolée. Je ne savais pas.
+
+10
+00:01:07,055 --> 00:01:09,955
+Tu peux me passer le petit tournevis ?
+
+11
+00:01:13,012 --> 00:01:19,061
+- Celui-là ?
+- Non, celui avec le manche rouge.
+
+12
+00:01:20,259 --> 00:01:23,609
+Pourquoi est-ce que ça compte autant pour toi ?
+
+13
+00:01:25,894 --> 00:01:29,744
+Parce que l'île n'a aucun autre moyen d'appeler à l'aide.
+
+14
+00:01:33,801 --> 00:01:37,801
+La ligne téléphonique est tombée avec la tempête cette nuit.
+
+15
+00:01:41,268 --> 00:01:43,868
+Et Mme Hale est toujours malade.
+
+16
+00:01:46,970 --> 00:01:50,420
+Le médecin est sur le continent jusqu'à vendredi.
+
+17
+00:01:51,612 --> 00:01:54,162
+Alors faisons parler cet engin.
+
+18
+00:01:57,653 --> 00:02:00,403
+Tu t'y connais en vieilles radios ?
+
+19
+00:02:02,145 --> 00:02:05,995
+Ma grand-mère en a monté une en kit quand j'étais petite.
+
+20
+00:02:08,149 --> 00:02:09,899
+Elle marchait ?
+
+21
+00:02:12,885 --> 00:02:16,235
+Elle a capté une station norvégienne, une fois.
+
+22
+00:02:17,859 --> 00:02:19,659
+Une seule fois ?
+
+23
+00:02:22,119 --> 00:02:24,041
+Elle disait qu'une fois suffisait
+
+24
+00:02:24,121 --> 00:02:26,821
+pour prouver que c'était possible.
+
+25
+00:02:28,858 --> 00:02:31,958
+Regarde ce fil. Il est complètement brûlé.
+
+26
+00:02:35,372 --> 00:02:37,472
+La foudre, sans doute.
+
+27
+00:02:40,513 --> 00:02:43,563
+Il y a du fil de cuivre dans la réserve ?
+
+28
+00:02:47,415 --> 00:02:50,515
+Il y en a toute une boîte sous l'escalier.
+
+29
+00:02:52,083 --> 00:02:54,983
+Je vais la chercher. Ne touche à rien.
+
+30
+00:02:58,129 --> 00:03:00,629
+Je n'en avais pas l'intention.
+
+31
+00:03:02,310 --> 00:03:09,253
+- Tiens. Ça suffira ?
+- Largement. Approche la lampe.
+
+32
+00:03:12,602 --> 00:03:14,602
+Tes mains tremblent.
+
+33
+00:03:18,321 --> 00:03:21,921
+C'est le froid. Cette pièce n'a jamais été chauffée.
+
+34
+00:03:24,871 --> 00:03:26,821
+Prends mon écharpe.
+
+35
+00:03:29,463 --> 00:03:30,763
+Merci.
+
+36
+00:03:34,193 --> 00:03:38,043
+Maintenant il faut du courant. Les batteries sont mortes.
+
+37
+00:03:41,269 --> 00:03:43,919
+Et le groupe électrogène en bas ?
+
+38
+00:03:48,831 --> 00:03:53,381
+Il lui faut du carburant, et le carburant est dans le hangar à bateaux.
+
+39
+00:03:54,676 --> 00:03:57,476
+Avec ce vent ? Tu finirais à la mer.
+
+40
+00:03:59,781 --> 00:04:02,481
+Alors on attend que le vent tombe.
+
+41
+00:04:06,530 --> 00:04:09,830
+Mme Hale ne peut pas attendre aussi longtemps.
+
+42
+00:04:12,142 --> 00:04:14,692
+Il y a une corde quelque part ?
+
+43
+00:04:18,867 --> 00:04:21,817
+Au crochet près de la porte. Pourquoi ?
+
+44
+00:04:23,610 --> 00:04:26,660
+Attache-la autour de ma taille. J'y vais.
+
+45
+00:04:31,292 --> 00:04:37,113
+- Tu es folle.
+- Sans doute. Tiens bon.
+
+46
+00:06:00,333 --> 00:06:03,433
+Verse-le. Doucement, sinon il va se noyer.
+
+47
+00:06:07,023 --> 00:06:09,523
+Maintenant tire sur le cordon.
+
+48
+00:06:12,554 --> 00:06:13,804
+Rien.
+
+49
+00:06:18,663 --> 00:06:21,113
+Encore. Plus fort cette fois.
+
+50
+00:06:23,309 --> 00:06:24,859
+Il tourne !
+
+51
+00:06:27,654 --> 00:06:30,454
+Les lumières sont allumées en haut !
+
+52
+00:06:33,526 --> 00:06:35,676
+Vite, avant qu'il cale.
+
+53
+00:06:37,288 --> 00:06:40,038
+Allume-la. Le gros bouton à gauche.
+
+54
+00:06:43,239 --> 00:06:45,339
+Que des grésillements.
+
+55
+00:06:46,510 --> 00:06:50,060
+Tourne doucement. Les garde-côtes sont vers la fin.
+
+56
+00:06:51,716 --> 00:06:53,916
+Attends. Tu as entendu ?
+
+57
+00:06:55,445 --> 00:06:58,245
+Une voix. Reviens un peu en arrière.
+
+58
+00:07:01,754 --> 00:07:05,054
+Ici les garde-côtes. Veuillez vous identifier.
+
+59
+00:07:08,099 --> 00:07:12,449
+Ici le phare de l'île aux Mouettes. Nous avons besoin d'un médecin.
+
+60
+00:07:16,329 --> 00:07:18,252
+Une vieille dame est malade,
+
+61
+00:07:18,332 --> 00:07:21,382
+et les lignes téléphoniques sont coupées.
+
+62
+00:07:21,999 --> 00:07:25,699
+Bien reçu, île aux Mouettes. Dans quel état est-elle ?
+
+63
+00:07:27,787 --> 00:07:31,337
+Forte fièvre depuis hier. Elle ne tient pas debout.
+
+64
+00:07:33,271 --> 00:07:36,971
+Nous enverrons un bateau dès que le vent le permettra.
+
+65
+00:07:38,477 --> 00:07:41,877
+Sans doute à l'aube. Restez sur cette fréquence.
+
+66
+00:07:44,483 --> 00:07:46,233
+Entendu. Merci.
+
+67
+00:07:49,440 --> 00:07:51,690
+Ton père aurait été fier.
+
+68
+00:07:56,155 --> 00:07:59,355
+Il aurait dit que j'avais mis trop de temps.
+
+69
+00:08:03,807 --> 00:08:05,857
+Onze ans, c'est long.
+
+70
+00:08:08,840 --> 00:08:11,690
+Pas pour la radio. Pour remonter ici.
+
+71
+00:08:14,203 --> 00:08:16,653
+Pourquoi tu n'es pas revenu ?
+
+72
+00:08:17,822 --> 00:08:21,372
+Chaque marche de cet escalier me fait penser à lui.
+
+73
+00:08:23,047 --> 00:08:25,397
+Même celle qui est cassée ?
+
+74
+00:08:28,835 --> 00:08:32,585
+Surtout celle qui est cassée. Il ne l'a jamais réparée.
+
+75
+00:08:33,415 --> 00:08:36,465
+On devrait peut-être la laisser comme ça.
+
+76
+00:08:40,589 --> 00:08:42,339
+Peut-être bien.
+
+77
+00:08:43,562 --> 00:08:46,412
+Regarde. Le ciel se dégage à l'ouest.
+
+78
+00:08:49,320 --> 00:08:51,220
+Le bateau viendra.
+
+79
+00:08:54,021 --> 00:08:56,321
+Je vais prévenir Mme Hale.
+
+80
+00:08:59,622 --> 00:09:02,622
+Prends la lampe. Le chemin est glissant.
+
+81
+00:09:06,971 --> 00:09:08,371
+Et toi ?
+
+82
+00:09:11,403 --> 00:09:14,903
+Il faut bien que quelqu'un reste près de la radio.
+
+83
+00:09:17,586 --> 00:09:20,286
+Alors je t'apporterai de la soupe.
+
+84
+00:09:24,029 --> 00:09:25,329
+Mara ?
+
+85
+00:09:26,466 --> 00:09:27,716
+Oui ?
+
+86
+00:09:32,238 --> 00:09:34,238
+Merci d'être restée.
+

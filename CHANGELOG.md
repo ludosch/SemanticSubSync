@@ -12,11 +12,17 @@ All notable changes to this project are documented here. The format follows
 - `core.resync()`: alignment plus the decision (`corrected`, `in_sync`, `refused`).
 - `tools/quantize_model.py`: builds the int8 model used on small CPUs.
 - MIT license, contribution guide, Bazarr integration guide.
+- `examples/lighthouse`: an original dialogue in three situations (scene missing, extra scene,
+  wrong reference), with the scripts that compare SemanticSubSync with alass, ffsubsync and LAPSE.
 
 ### Changed
 - The engine is independent of any subtitle manager. Bazarr support moved to
   `integrations/bazarr/`.
 - The output of the command line defaults to `SUBTITLE.synced.srt`.
+
+### Fixed
+- `max_abs_offset` ignored the frame-rate drift inside a segment and under-reported the largest
+  shift.
 
 ## [0.8.0] - 2026-10-01
 

@@ -218,3 +218,12 @@ def test_stats_shape():
     assert st["status"] == "ok"
     assert 0.9 <= st["coverage"] <= 1.0
     assert st["segments"] == 1 and abs(st["seg"][0]["a"] + 3) < 0.05
+
+
+def test_max_abs_offset_includes_drift():
+    """With a frame-rate drift the largest shift is at the end of a segment, not at its start."""
+    base = dialogue(n=200, seed=5)
+    tgt = tgt_cues(base, warp=lambda t: t / (1 + PAL))
+    out, st = run(tgt, ref_cues(base))
+    largest = max(abs(o[0] - t[0]) for o, t in zip(out, tgt))
+    assert abs(st["max_abs_offset"] - largest) < 0.5

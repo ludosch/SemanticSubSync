@@ -224,7 +224,7 @@ def sync(tgt, ref, p=P, embed_fn=None):
              "seg": [{"t0": round(s["t0"], 1), "t1": round(s["t1"], 1), "n": s["n"],
                       "a": round(s["a"], 3), "drift_ppm": round(s["b"] * 1e6)} for s in segs],
              "resid_med": round(float(np.median(np.abs(resid))), 3),
-             "max_abs_offset": round(max(abs(s["a"] + s["b"] * s["t0"]) for s in segs), 3)}
+             "max_abs_offset": round(max(abs(s["a"] + s["b"] * t) for s in segs for t in (s["t0"], s["t1"])), 3)}
     return out, stats
 
 def _with_pairs(v):
