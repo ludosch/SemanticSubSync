@@ -1,7 +1,8 @@
 """End-to-end with the real multilingual model (skipped by default).
 
 Run: SEMSYNC_TEST_MODEL=1 [SEMSYNC_MODEL_DIR=.../minilm-int8g] uv run --extra model pytest -m model
-The dialogue below was written for this test (no film extract).
+The dialogue below was written for this test (no film extract). The French side is the point:
+the engine matches lines across languages.
 """
 import os
 

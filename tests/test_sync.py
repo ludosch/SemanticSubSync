@@ -110,7 +110,7 @@ def test_cues_without_text_are_ignored_for_matching():
     base = dialogue(n=300, seed=11)
     tgt = tgt_cues(base, warp=lambda t: t + 5)
     for c in tgt[::10]:
-        c[2] = "[MUSIQUE]"
+        c[2] = "[MUSIC]"
     out, st = run(tgt, ref_cues(base))
     assert st["embeddable"] == len(tgt) - len(tgt[::10])
     assert accuracy(out, base) >= 0.95
@@ -139,10 +139,10 @@ def _split_sentences(base, every):
         if k % every == 0:
             ref.append([s, e, f"line k{k}a k{k}b"])
             m = (s + e) / 2
-            tgt += [[s, m, f"réplique k{k}a"], [m, e, f"réplique k{k}b"]]
+            tgt += [[s, m, f"cue k{k}a"], [m, e, f"cue k{k}b"]]
         else:
             ref.append([s, e, f"line k{k}"])
-            tgt.append([s, e, f"réplique k{k}"])
+            tgt.append([s, e, f"cue k{k}"])
     return ref, tgt
 
 

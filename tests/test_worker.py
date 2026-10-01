@@ -45,6 +45,7 @@ def test_side_path(video, sub, expected):
 
 def test_read_srt_cp1252(tmp_path):
     p = tmp_path / "a.srt"
+    # French on purpose: accented letters are where cp1252 and UTF-8 differ
     p.write_bytes("1\n00:00:01,000 --> 00:00:02,000\nÇa été déjà là\n".encode("cp1252"))
     assert worker.read_srt(str(p))[0][2] == "Ça été déjà là"
 

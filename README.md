@@ -1,40 +1,55 @@
+**English** | [Français](README.fr.md)
+
 # SemanticSubSync
 
-Recale un sous-titre (ex. FR téléchargé) sur un sous-titre de référence dans une autre langue
-(ex. la piste VO intégrée à la vidéo) en appariant les répliques **par leur sens**, pas par la
-forme du timing ni par l'audio.
+Re-times a subtitle (e.g. a downloaded French one) on a reference subtitle in another language
+(e.g. the original-language track embedded in the video) by matching lines **on meaning**, not on
+the shape of the timing and not on the audio.
 
-1. nettoyage + embedding de chaque cue (MiniLM multilingue, local, déterministe) ;
-2. candidats : pour chaque cue cible, les 3 meilleures cues de référence (seules ou fusionnées par 2) ;
-3. plus longue chaîne croissante pondérée → ancres monotones, filtre de voisinage sur les offsets ;
-4. dérive de framerate globale (ratios fixes 23.976/24/25/29.97/30) puis segments à offset constant
-   (coupes, scènes ajoutées/retirées) ;
-5. garde-fous : couverture < 0,25 → refus (référence qui ne dit pas la même chose, ex. commentaire) ;
-   correction < 0,5 s partout → fichier laissé tel quel (biais naturel FR/VO).
+## How it works
 
-## Utilisation
+1. Every cue is cleaned (tags, SDH, speaker names) and embedded with a multilingual sentence model
+   (MiniLM, local and deterministic).
+2. Candidates: for each target cue, the 3 best reference cues, single or merged by two.
+3. A weighted longest increasing chain gives monotonic anchors; a neighbourhood filter drops
+   anchors whose offset disagrees with their neighbours.
+4. One global frame-rate drift is chosen among fixed ratios (23.976 / 24 / 25 / 29.97 / 30), then
+   the timeline is split into constant-offset segments (cuts, added or removed scenes).
+5. Guards:
+   - coverage below 0.25: refused (the reference does not say the same thing, e.g. a commentary track);
+   - every correction below 0.5 s: the file is left untouched (natural bias between two languages);
+   - segments shorter than 60 s are local mismatches, not cuts.
 
-```bash
-semantic-subsync cible.fr.srt reference.en.srt sortie.srt     # stats JSON sur stdout
-```
-
-Le worker (`semantic-subsync-worker run`) traite la file `/data/.semsync/queue` alimentée par le
-post-traitement Bazarr (`bazarr/enqueue.py`) et écrit `<vidéo>.semsync.<langue>.srt` à côté de la vidéo.
-Variables : `SEMSYNC_MODEL_DIR` (copie int8 du modèle), `SEMSYNC_DIR`, `SEMSYNC_CACHE`.
-
-## Tests
+## Usage
 
 ```bash
-mise x -- uv run pytest                      # rapide, sans modèle (embedder factice déterministe)
-SEMSYNC_TEST_MODEL=1 SEMSYNC_MODEL_DIR=~/subsync-lab/models/minilm-int8g \
-  mise x -- uv run --extra model pytest -m model   # bout en bout avec le vrai modèle
+semantic-subsync target.fr.srt reference.en.srt output.srt     # JSON stats on stdout
 ```
 
-Les tests unitaires utilisent des dialogues **synthétiques** (`tests/synth.py`) : chaque réplique
-porte un « concept » `k17` que l'embedder factice transforme en vecteur fixe ; FR et VO d'un même
-concept ont un cosinus ~0,9, deux concepts différents ~0. On teste ainsi l'algorithme
-indépendamment du modèle, avec chaque déformation du bench (offset, fps, coupes, scènes en plus,
-phrases découpées différemment, répliques courtes répétées, référence sans rapport).
-Aucun extrait de film n'est versionné.
+### Worker
 
-Le bench sur vrais films (15 vidéos × 7 déformations) reste dans le labo WSL `~/subsync-lab`.
+`semantic-subsync-worker run` processes the `/data/.semsync/queue` folder, fed by Bazarr's custom
+post-processing (`bazarr/enqueue.py`). For each downloaded subtitle it extracts the embedded text
+subtitles of the video (forced tracks excluded), takes the fullest one as reference, and writes
+`<video>.semsync.<lang>.srt` next to the video when a correction is needed. The downloaded file is
+never modified.
+
+| Variable | Meaning |
+|---|---|
+| `SEMSYNC_MODEL_DIR` | Local copy of the model (e.g. the int8-quantized one) |
+| `SEMSYNC_DIR` | Queue, failed jobs and log folder (default `/data/.semsync`) |
+| `SEMSYNC_CACHE` | Optional on-disk embedding cache |
+
+## Development
+
+```bash
+mise x -- uv run pytest                                    # fast, no model needed
+SEMSYNC_TEST_MODEL=1 SEMSYNC_MODEL_DIR=/path/to/minilm-int8g \
+  mise x -- uv run --extra model pytest -m model           # end to end with the real model
+```
+
+Unit tests run on **synthetic** dialogues (`tests/synth.py`). Each line carries a "concept" token
+such as `k17`, which a deterministic fake embedder turns into a fixed vector: the two languages of
+one concept score ~0.9, unrelated lines ~0.2-0.3. This tests the algorithm independently of the
+model, against every distortion of the benchmark: offset, frame rate, cuts, extra scenes, sentences
+split differently, repeated short replies, unrelated reference. No film extract is versioned.

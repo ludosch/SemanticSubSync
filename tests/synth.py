@@ -1,10 +1,9 @@
 """Synthetic subtitles for the tests: no model, no film extracts, fully deterministic.
 
 Meaning is modelled by "concept" tokens such as `k17`: the reference cue for concept 17 reads
-"line k17" and the target cue "réplique k17". `fake_embed` maps each concept to a fixed random
-unit vector, so a target cue and the reference cue that says the same thing get a cosine of ~0.95
-whatever the wording, while unrelated cues stay near 0 (128 dimensions), just like a multilingual
-sentence model. A cue carrying two concepts (a merged or unsplit sentence) gets their normalised
+"line k17" and the target cue "cue k17". `fake_embed` maps each concept to a fixed random
+unit vector, so a target cue and the reference cue that says the same thing get a cosine of ~0.9
+whatever the wording, while unrelated cues score ~0.2-0.3, like a multilingual sentence model. A cue carrying two concepts (a merged or unsplit sentence) gets their normalised
 sum, so half a sentence scores ~0.7 against the whole one.
 
 Words without a concept token are looked up in SYNONYMS, so "Oui." and "Yes." share one vector:
@@ -57,7 +56,7 @@ def ref_cues(base, text="line k{k}"):
     return [[s, e, text.format(k=k)] for s, e, k in base]
 
 
-def tgt_cues(base, warp=lambda t: t, drop=lambda s: False, text="réplique k{k}"):
+def tgt_cues(base, warp=lambda t: t, drop=lambda s: False, text="cue k{k}"):
     """Target subtitle for the same dialogue: start times go through `warp` (the target's own
     timeline), durations follow its local slope; cues whose reference start satisfies `drop`
     (a scene missing from the target's edition) are absent."""
