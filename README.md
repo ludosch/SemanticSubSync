@@ -147,17 +147,15 @@ Speed on the author's NAS (2-core Celeron J4025), with the int8 model (see [Mode
 about 85 s and 590 MB of RAM at peak for a full movie. It depends on the hardware and on the
 number of lines.
 
-### Real downloaded subtitles
+### Real-world datasets
 
 The benchmark above starts from correct tracks. To see the behaviour on files as they are found
-online, the author downloaded 66 subtitles from a public subtitle site for 8 TV episodes (Game
-of Thrones S01E01 and S02E03, Breaking Bad S05E09, Lost S04E02, Friends S05E08, The Office
-S03E10, The Sopranos S04E01, Squid Game S01E01), in 16 languages: Arabic, Chinese, English,
-French, German, Greek, Hungarian, Italian, Japanese, Polish, Portuguese (Portugal and Brazil),
-Russian, Spanish, Swedish, Turkish. Each one was aligned on the English subtitle of its episode,
-then the English one on it: 114 pairs. These files are copyrighted and are not in the
-repository; [`tools/bench_real.py`](tools/bench_real.py) runs the same measurement on any such
-folder.
+online, the author used real-world datasets: 66 subtitles downloaded from a public subtitle
+site for 8 TV episodes, in 16 languages: Arabic, Chinese, English, French, German, Greek,
+Hungarian, Italian, Japanese, Polish, Portuguese (Portugal and Brazil), Russian, Spanish,
+Swedish, Turkish. Each one was aligned on the English subtitle of its episode, then the English
+one on it: 114 pairs. These files are not in the repository;
+[`tools/bench_real.py`](tools/bench_real.py) runs the same measurement on any such folder.
 
 There is no ground truth here, so the measure is a proxy: the lines that have **one** obvious
 translation in the other file (similarity 0.70 or more, 0.15 above any other line) should start
@@ -170,17 +168,16 @@ stays below 100 %.
 | Corrected | 44 | before: 1.9 % / 4.5 % — after: 82.7 % / 91.5 % |
 | Refused | 4 | — |
 
-- The corrected pairs covered the cases the tool is made for: 25 fps versus 23.976 fps
-  (Friends, The Sopranos, Lost), cuts and scenes added or removed (The Office, 3 to 6
-  segments; the extended DVD cut of Friends), a 90 s recap present in only one release (Game of
-  Thrones S02E03). 28 of the 44 reached 90 % or more at 1 s; the lowest was 69 % (a Portuguese
-  translation of The Office, cut very differently from the English one).
-- 2 of the 44 ended slightly below the untouched file: Game of Thrones S01E01 in Greek, 95.7 %
-  then 93.2 % at 1 s, for a correction of about 0.5 s, just above the deadband.
+- The corrected pairs covered the cases the tool is made for: 25 fps versus 23.976 fps (3
+  episodes), cuts and scenes added or removed (3 to 6 segments, including an extended DVD cut),
+  a 90 s recap present in only one release. 28 of the 44 reached 90 % or more at 1 s; the
+  lowest was 69 % (a Portuguese translation cut very differently from the English one).
+- 2 of the 44 ended slightly below the untouched file (one Greek subtitle in both directions,
+  95.7 % then 93.2 % at 1 s), for a correction of about 0.5 s, just above the deadband.
 - The 4 refusals are 2 files in both directions, whose content belongs to another episode than
   their name says (the dialogue and the duration do not match the reference).
-- 170 lines were left out, 140 of them being the 35-line recap of one Game of Thrones release,
-  aligned on releases without it. Without that, they would have been stacked at 00:00:00.
+- 170 lines were left out, 140 of them being the 35-line recap of one release, aligned on
+  releases without it. Without that, they would have been stacked at 00:00:00.
 - No line came out of time order or before 0 s, and no overlap longer than 0.3 s was created.
 - 47 of the 66 files were not UTF-8 (see [Usage](#usage)).
 
@@ -274,7 +271,7 @@ tests the algorithm independently of the model, against every distortion of the 
 film extract is stored in the repository.
 
 The `corpus` tests run every pair of a local folder of real subtitles (see
-[Real downloaded subtitles](#real-downloaded-subtitles)) and check the invariants, and that no
+[Real-world datasets](#real-world-datasets)) and check the invariants, and that no
 correction is clearly worse than the untouched file. Skipped when `SEMSYNC_CORPUS` is not set.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) and the [changelog](CHANGELOG.md).

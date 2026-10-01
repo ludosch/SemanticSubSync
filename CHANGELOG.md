@@ -10,7 +10,7 @@ All notable changes to this project are documented here. The format follows
 - `--lang` and reading of non-UTF-8 subtitles in the code page of their language (from the
   file name or `--lang`); Cyrillic, Greek, Arabic or Chinese files were read as gibberish.
 - `tools/bench_real.py` and `pytest -m corpus`: measurement on a local folder of real
-  downloaded subtitles; README section "Real downloaded subtitles" with the author's figures.
+  downloaded subtitles; README section "Real-world datasets" with the author's figures.
 - README: the languages of the model.
 
 ### Changed

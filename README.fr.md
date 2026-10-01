@@ -157,18 +157,16 @@ Vitesse sur le NAS de l'auteur (Celeron J4025, 2 cœurs), avec le modèle int8 (
 [Modèle](#modèle)) : environ 85 s et 590 Mo de RAM au maximum pour un film complet. Elle dépend
 du matériel et du nombre de répliques.
 
-### Sous-titres réels téléchargés
+### Jeux de données réels
 
 Le benchmark ci-dessus part de pistes correctes. Pour voir le comportement sur des fichiers tels
-qu'on les trouve en ligne, l'auteur a téléchargé 66 sous-titres sur un site public de
-sous-titres pour 8 épisodes de séries (Game of Thrones S01E01 et S02E03, Breaking Bad S05E09,
-Lost S04E02, Friends S05E08, The Office S03E10, Les Soprano S04E01, Squid Game S01E01), en 16
-langues : allemand, anglais, arabe, chinois, espagnol, français, grec, hongrois, italien,
-japonais, polonais, portugais (Portugal et Brésil), russe, suédois, turc. Chacun a été recalé
-sur le sous-titre anglais de son épisode, puis l'anglais sur lui : 114 paires. Ces fichiers sont
-protégés par le droit d'auteur et ne sont pas dans le dépôt ;
-[`tools/bench_real.py`](tools/bench_real.py) refait la même mesure sur n'importe quel dossier
-de ce type.
+qu'on les trouve en ligne, l'auteur a utilisé des jeux de données réels : 66 sous-titres
+téléchargés sur un site public de sous-titres pour 8 épisodes de séries, en 16 langues :
+allemand, anglais, arabe, chinois, espagnol, français, grec, hongrois, italien, japonais,
+polonais, portugais (Portugal et Brésil), russe, suédois, turc. Chacun a été recalé sur le
+sous-titre anglais de son épisode, puis l'anglais sur lui : 114 paires. Ces fichiers ne sont
+pas dans le dépôt ; [`tools/bench_real.py`](tools/bench_real.py) refait la même mesure sur
+n'importe quel dossier de ce type.
 
 Il n'y a pas de vérité terrain ici, la mesure est donc indirecte : les répliques qui ont **une
 seule** traduction évidente dans l'autre fichier (similarité d'au moins 0,70, et 0,15 de plus
@@ -182,17 +180,17 @@ sont rarement découpées de la même façon : même une paire synchronisée res
 | Refusé | 4 | — |
 
 - Les paires corrigées couvrent les cas pour lesquels l'outil est fait : 25 i/s contre
-  23,976 i/s (Friends, Les Soprano, Lost), coupes et scènes ajoutées ou retirées (The Office,
-  3 à 6 segments ; la version longue DVD de Friends), un récapitulatif de 90 s présent dans une
-  seule version (Game of Thrones S02E03). 28 des 44 atteignent 90 % ou plus à 1 s ; la plus
-  basse est à 69 % (une traduction portugaise de The Office, découpée très différemment de
-  l'anglaise).
-- 2 des 44 finissent légèrement en dessous du fichier non modifié : Game of Thrones S01E01 en
-  grec, 95,7 % puis 93,2 % à 1 s, pour une correction d'environ 0,5 s, juste au-dessus du seuil.
+  23,976 i/s (3 épisodes), coupes et scènes ajoutées ou retirées (3 à 6 segments, dont une
+  version longue DVD), un récapitulatif de 90 s présent dans une seule version. 28 des 44
+  atteignent 90 % ou plus à 1 s ; la plus basse est à 69 % (une traduction portugaise découpée
+  très différemment de l'anglaise).
+- 2 des 44 finissent légèrement en dessous du fichier non modifié (un sous-titre grec, dans les
+  deux sens : 95,7 % puis 93,2 % à 1 s), pour une correction d'environ 0,5 s, juste au-dessus du
+  seuil.
 - Les 4 refus sont 2 fichiers dans les deux sens, dont le contenu appartient à un autre épisode
   que celui de leur nom (ni le dialogue ni la durée ne correspondent à la référence).
 - 170 répliques ont été retirées, dont 140 correspondent au récapitulatif de 35 répliques d'une
-  version de Game of Thrones, recalée sur des versions qui ne l'ont pas. Sans cela, elles
+  version, recalée sur des versions qui ne l'ont pas. Sans cela, elles
   auraient été empilées à 00:00:00.
 - Aucune réplique n'est sortie hors de l'ordre chronologique ou avant 0 s, et aucun
   chevauchement de plus de 0,3 s n'a été créé.
@@ -294,7 +292,7 @@ indépendamment du modèle, sur chaque déformation du benchmark. Aucun extrait 
 stocké dans le dépôt.
 
 Les tests `corpus` passent toutes les paires d'un dossier local de sous-titres réels (voir
-[Sous-titres réels téléchargés](#sous-titres-réels-téléchargés)) et vérifient les invariants,
+[Jeux de données réels](#jeux-de-données-réels)) et vérifient les invariants,
 ainsi qu'aucune correction n'est nettement pire que le fichier non modifié. Ils sont sautés si
 `SEMSYNC_CORPUS` n'est pas défini.
 
