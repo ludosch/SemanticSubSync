@@ -17,6 +17,7 @@ MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 P = dict(topk=3, min_sim=0.55, nb=7, max_dev=1.0, max_offset=900.0,
          merge="mean",   # "embed": encode 2-cue merges; "mean": average the two cue vectors (free)
          stride=1,       # embed every Nth target cue only (anchors); all cues are still re-timed
+         tgt_merge=True, # also match 2 consecutive target cues (a sentence split in two)
          min_seg=60.0,   # s: a segment shorter than this is a mis-match, not a cut -> merged into its neighbour
          deadband=0.5)   # s: a single constant correction smaller than this = natural FR/VO bias -> leave file untouched
 # Drift only comes from frame-rate conversions, i.e. a handful of ratios for the whole file.
@@ -111,17 +112,21 @@ def sync(tgt, ref, p=P, embed_fn=None):
     # reference units: single cues + merges of 2 consecutive cues
     ti = ti[::p.get("stride", 1)]
     units = [(j, rt[j]) for j in ri] + [(ri[k], rt[ri[k]] + " " + rt[ri[k+1]]) for k in range(len(ri)-1)]
-    ve = embed_fn([tt[i] for i in ti])
+    # target units: single cues, plus merges of 2 consecutive cues when tgt_merge is on (a sentence
+    # split in two cues: each half alone often scores below min_sim against the whole sentence)
+    tunits = [(i, i) for i in ti]
+    if p.get("tgt_merge", True):
+        tunits += [(ti[k], ti[k+1]) for k in range(len(ti)-1)]
     if p.get("merge", "embed") == "embed":
         vr = embed_fn([u[1] for u in units])
+        ve = embed_fn([tt[a] if a == b else tt[a] + " " + tt[b] for a, b in tunits])
     else:
-        v1 = embed_fn([rt[j] for j in ri]); v2 = v1[:-1] + v1[1:]
-        v2 /= np.linalg.norm(v2, axis=1, keepdims=True) + 1e-9
-        vr = np.vstack([v1, v2])
-    sim = ve @ vr.T                                             # (n_tgt, n_units)
-    # best score per (target cue, reference start cue)
-    cand = []
-    for a, i in enumerate(ti):
+        vr, ve = _with_pairs(embed_fn([rt[j] for j in ri])), _with_pairs(embed_fn([tt[i] for i in ti]))
+        ve = ve[:len(tunits)]
+    sim = ve @ vr.T                                             # (n_tgt_units, n_ref_units)
+    # best score per (target start cue, reference start cue); `last` = last target cue covered
+    best = {}
+    for a, (i, last) in enumerate(tunits):
         row = sim[a]; order = np.argsort(-row)
         seen = set()
         for u in order[:p["topk"] * 2]:
@@ -129,13 +134,15 @@ def sync(tgt, ref, p=P, embed_fn=None):
             if j in seen or row[u] < p["min_sim"]: continue
             off = ref[j][0] - tgt[i][0]
             if abs(off) > p["max_offset"]: continue
-            seen.add(j); cand.append((i, j, float(row[u])))
+            seen.add(j)
+            if (i, j) not in best or row[u] > best[(i, j)][2]:
+                best[(i, j)] = (i, j, float(row[u]), last)
             if len(seen) >= p["topk"]: break
+    cand = list(best.values())
     if not cand:
         return None, {"status": "no_match"}
     # weighted longest chain, strictly increasing in i and j
     cand.sort(key=lambda c: (c[0], -c[1]))
-    best = {}; prev = {}
     # Fenwick-like via sorted list of (j, cumulative score) maxima -> simple O(P log P) with bisect over j
     js, vals, ids = [], [], []            # monotone structure: increasing j, increasing value
     score = [0.0] * len(cand); back = [-1] * len(cand)
@@ -144,7 +151,7 @@ def sync(tgt, ref, p=P, embed_fn=None):
     while k < len(cand):
         i0 = cand[k][0]; group = []
         while k < len(cand) and cand[k][0] == i0:
-            i, j, s = cand[k]
+            i, j, s, _ = cand[k]
             pos = bisect.bisect_left(js, j) - 1
             score[k] = s + (vals[pos] if pos >= 0 else 0.0)
             back[k] = ids[pos] if pos >= 0 else -1
@@ -162,7 +169,7 @@ def sync(tgt, ref, p=P, embed_fn=None):
     while g >= 0: chain.append(cand[g]); g = back[g]
     chain.reverse()
     # robust neighbourhood filter on offsets
-    offs = np.array([ref[j][0] - tgt[i][0] for i, j, _ in chain])
+    offs = np.array([ref[j][0] - tgt[i][0] for i, j, _, _ in chain])
     # an anchor is kept if it agrees with its left OR its right neighbours
     # (one-sided, so anchors right after a cut are not rejected)
     keep = []; nb = p["nb"]
@@ -210,7 +217,8 @@ def sync(tgt, ref, p=P, embed_fn=None):
         if out[a][1] > out[a+1][0] and out[a][0] < out[a+1][0]:
             out[a][1] = max(out[a][0] + 0.3, out[a+1][0] - 0.04)
     stats = {"status": "ok", "tgt_cues": len(tgt), "embeddable": len(ti), "chain": len(chain),
-             "anchors": len(anchors), "coverage": round(len(anchors) / len(ti), 3),
+             "anchors": len(anchors),
+             "coverage": round(len({c for a in keep for c in chain[a][::3]}) / len(ti), 3),
              "mean_sim": round(float(np.mean([chain[a][2] for a in keep])), 3),
              "segments": len(segs),
              "seg": [{"t0": round(s["t0"], 1), "t1": round(s["t1"], 1), "n": s["n"],
@@ -218,6 +226,12 @@ def sync(tgt, ref, p=P, embed_fn=None):
              "resid_med": round(float(np.median(np.abs(resid))), 3),
              "max_abs_offset": round(max(abs(s["a"] + s["b"] * s["t0"]) for s in segs), 3)}
     return out, stats
+
+def _with_pairs(v):
+    """Unit vectors of single items followed by the normalised mean of each consecutive pair."""
+    v2 = v[:-1] + v[1:]
+    v2 /= np.linalg.norm(v2, axis=1, keepdims=True) + 1e-9
+    return np.vstack([v, v2])
 
 def fit(t, o, allow_slope):
     """Robust line o = a + b t: least squares with iterative trimming."""

@@ -10,7 +10,8 @@ the shape of the timing and not on the audio.
 
 1. Every cue is cleaned (tags, SDH, speaker names) and embedded with a multilingual sentence model
    (MiniLM, local and deterministic).
-2. Candidates: for each target cue, the 3 best reference cues, single or merged by two.
+2. Candidates: target cues, single or merged by two (a sentence split in two), are matched with
+   the 3 best reference cues, single or merged by two.
 3. A weighted longest increasing chain gives monotonic anchors; a neighbourhood filter drops
    anchors whose offset disagrees with their neighbours.
 4. One global frame-rate drift is chosen among fixed ratios (23.976 / 24 / 25 / 29.97 / 30), then
@@ -50,6 +51,6 @@ SEMSYNC_TEST_MODEL=1 SEMSYNC_MODEL_DIR=/path/to/minilm-int8g \
 
 Unit tests run on **synthetic** dialogues (`tests/synth.py`). Each line carries a "concept" token
 such as `k17`, which a deterministic fake embedder turns into a fixed vector: the two languages of
-one concept score ~0.9, unrelated lines ~0.2-0.3. This tests the algorithm independently of the
+one concept score ~0.9, unrelated lines ~0.1. This tests the algorithm independently of the
 model, against every distortion of the benchmark: offset, frame rate, cuts, extra scenes, sentences
 split differently, repeated short replies, unrelated reference. No film extract is versioned.

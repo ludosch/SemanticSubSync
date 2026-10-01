@@ -3,8 +3,11 @@
 Meaning is modelled by "concept" tokens such as `k17`: the reference cue for concept 17 reads
 "line k17" and the target cue "cue k17". `fake_embed` maps each concept to a fixed random
 unit vector, so a target cue and the reference cue that says the same thing get a cosine of ~0.9
-whatever the wording, while unrelated cues score ~0.2-0.3, like a multilingual sentence model. A cue carrying two concepts (a merged or unsplit sentence) gets their normalised
-sum, so half a sentence scores ~0.7 against the whole one.
+whatever the wording, while unrelated cues score ~0.1, like a multilingual sentence model. A cue
+carrying several concepts gets their normalised sum. A sentence split in two target cues is
+written "k5a" + "k5b" while the reference's whole sentence is "k5a k5b k5": each half then scores
+~0.55 against it and the two halves together ~0.8, as measured with the real MiniLM on French
+halves vs English sentences (half: median 0.56-0.70, below 0.55 in 10/20; both halves: 0.76).
 
 Words without a concept token are looked up in SYNONYMS, so "Oui." and "Yes." share one vector:
 that is how repeated short replies are modelled.
@@ -13,7 +16,7 @@ import hashlib, re
 import numpy as np
 
 DIM = 128
-COMMON = 0.65                  # cos(unrelated) ~ COMMON² / (1 + COMMON²) ~ 0.3
+COMMON = 0.33                  # cos(unrelated) ~ COMMON² / (1 + COMMON²) ~ 0.1 (real MiniLM: ~0.07)
 SYNONYMS = {"oui": "yes", "yes": "yes", "merci": "thanks", "thanks": "thanks",
             "non": "no", "no": "no", "quoi": "what", "what": "what"}
 
@@ -30,7 +33,7 @@ def fake_embed(texts):
         keys = re.findall(r"k\d+[ab]?", t) or [SYNONYMS.get(w, w) for w in re.findall(r"\w+", t.lower())]
         v = sum(_vec(k) for k in keys) if keys else _vec("")
         v = v / np.linalg.norm(v) + 0.35 * _vec("noise:" + t)    # wording: same meaning -> cos ~0.9
-        # shared "it is dialogue" direction: unrelated lines score ~0.3, like the real model,
+        # shared "it is dialogue" direction: unrelated lines score ~0.1, like the real model,
         # so that min_sim has something to reject
         v = v / np.linalg.norm(v) + COMMON * _vec("common")
         out[n] = v / np.linalg.norm(v)

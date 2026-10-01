@@ -10,7 +10,8 @@ dans une autre langue (par exemple la piste VO intégrée à la vidéo) en appar
 
 1. Chaque réplique est nettoyée (balises, sous-titres pour sourds, noms de personnages) puis
    transformée en vecteur par un modèle de phrases multilingue (MiniLM, local et déterministe).
-2. Candidats : pour chaque réplique cible, les 3 meilleures répliques de référence, seules ou fusionnées par deux.
+2. Candidats : les répliques cibles, seules ou fusionnées par deux (phrase coupée en deux), sont
+   appariées aux 3 meilleures répliques de référence, seules ou fusionnées par deux.
 3. Une plus longue chaîne croissante pondérée donne des ancres monotones ; un filtre de voisinage
    écarte les ancres dont le décalage contredit celui de leurs voisines.
 4. Une dérive de framerate globale est choisie parmi des ratios fixes (23,976 / 24 / 25 / 29,97 / 30),
@@ -50,7 +51,7 @@ SEMSYNC_TEST_MODEL=1 SEMSYNC_MODEL_DIR=/chemin/vers/minilm-int8g \
 
 Les tests unitaires tournent sur des dialogues **synthétiques** (`tests/synth.py`). Chaque réplique
 porte un « concept » comme `k17`, qu'un faux modèle déterministe transforme en vecteur fixe : les
-deux langues d'un même concept se ressemblent à ~0,9, deux répliques sans rapport à ~0,2-0,3. On teste
+deux langues d'un même concept se ressemblent à ~0,9, deux répliques sans rapport à ~0,1. On teste
 ainsi l'algorithme indépendamment du modèle, sur chaque déformation du bench : décalage, framerate,
 coupes, scènes en plus, phrases découpées différemment, répliques courtes répétées, référence sans
 rapport. Aucun extrait de film n'est versionné.

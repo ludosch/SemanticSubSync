@@ -137,7 +137,7 @@ def _split_sentences(base, every):
     ref, tgt = [], []
     for s, e, k in base:
         if k % every == 0:
-            ref.append([s, e, f"line k{k}a k{k}b"])
+            ref.append([s, e, f"line k{k}a k{k}b k{k}"])
             m = (s + e) / 2
             tgt += [[s, m, f"cue k{k}a"], [m, e, f"cue k{k}b"]]
         else:
@@ -166,6 +166,20 @@ def test_split_sentences_in_sync_stay_untouched():
     ref, tgt = _split_sentences(base, every=5)
     out, st = run(tgt, ref)
     assert out == tgt, st
+
+
+@pytest.mark.parametrize("every", [1, 2])
+@pytest.mark.parametrize("warp", [lambda t: t + 8.0, lambda t: t * (1 + PAL) - 3.0], ids=["const", "fps"])
+def test_heavily_split_target_keeps_its_anchors(every, warp):
+    """When the target splits most sentences, each half alone often falls below min_sim: the two
+    halves together must still anchor them (target-side 2-cue units)."""
+    base = dialogue(n=300, seed=19)
+    ref, tgt = _split_sentences(base, every=every)
+    tgt = [[warp(s), warp(e), x] for s, e, x in tgt]
+    out, st = run(tgt, ref)
+    assert out is not None and st["coverage"] >= 0.6, st
+    first_halves = [c for c in out if not c[2].endswith("b")]
+    assert accuracy(first_halves, base) >= 0.95, st
 
 
 def test_split_sentences_with_offset():
