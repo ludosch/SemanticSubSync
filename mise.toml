@@ -1,0 +1,6 @@
+[tools]
+python = "3.12"
+uv = "0.12"
+
+[env]
+UV_PYTHON_PREFERENCE = "only-system"

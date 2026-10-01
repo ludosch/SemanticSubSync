@@ -1,0 +1,28 @@
+[project]
+name = "semantic-subsync"
+version = "0.7.0"
+description = "Re-time a subtitle on a reference subtitle in another language by matching cues on meaning."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = ["numpy>=2"]
+
+[project.optional-dependencies]
+# The sentence model. Not needed by the unit tests, which use a deterministic fake embedder.
+model = ["fastembed>=0.8"]
+
+[project.scripts]
+semantic-subsync = "semantic_subsync.core:main"
+semantic-subsync-worker = "semantic_subsync.worker:main"
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "model: needs the real sentence model (set SEMSYNC_TEST_MODEL=1, optionally SEMSYNC_MODEL_DIR)",
+]

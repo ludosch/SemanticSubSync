@@ -1,0 +1,88 @@
+"""Synthetic subtitles for the tests: no model, no film extracts, fully deterministic.
+
+Meaning is modelled by "concept" tokens such as `k17`: the reference cue for concept 17 reads
+"line k17" and the target cue "réplique k17". `fake_embed` maps each concept to a fixed random
+unit vector, so a target cue and the reference cue that says the same thing get a cosine of ~0.95
+whatever the wording, while unrelated cues stay near 0 (128 dimensions), just like a multilingual
+sentence model. A cue carrying two concepts (a merged or unsplit sentence) gets their normalised
+sum, so half a sentence scores ~0.7 against the whole one.
+
+Words without a concept token are looked up in SYNONYMS, so "Oui." and "Yes." share one vector:
+that is how repeated short replies are modelled.
+"""
+import hashlib, re
+import numpy as np
+
+DIM = 128
+COMMON = 0.65                  # cos(unrelated) ~ COMMON² / (1 + COMMON²) ~ 0.3
+SYNONYMS = {"oui": "yes", "yes": "yes", "merci": "thanks", "thanks": "thanks",
+            "non": "no", "no": "no", "quoi": "what", "what": "what"}
+
+
+def _vec(key):
+    seed = int(hashlib.md5(key.encode()).hexdigest()[:8], 16)
+    v = np.random.default_rng(seed).standard_normal(DIM)
+    return v / np.linalg.norm(v)
+
+
+def fake_embed(texts):
+    out = np.empty((len(texts), DIM), dtype=np.float32)
+    for n, t in enumerate(texts):
+        keys = re.findall(r"k\d+[ab]?", t) or [SYNONYMS.get(w, w) for w in re.findall(r"\w+", t.lower())]
+        v = sum(_vec(k) for k in keys) if keys else _vec("")
+        v = v / np.linalg.norm(v) + 0.35 * _vec("noise:" + t)    # wording: same meaning -> cos ~0.9
+        # shared "it is dialogue" direction: unrelated lines score ~0.3, like the real model,
+        # so that min_sim has something to reject
+        v = v / np.linalg.norm(v) + COMMON * _vec("common")
+        out[n] = v / np.linalg.norm(v)
+    return out
+
+
+def dialogue(n=300, seed=0, start=30.0):
+    """Reference timeline: n cues with realistic durations, gaps and a few long silences.
+    Returns [[start, end, concept_id], ...]."""
+    rng = np.random.default_rng(seed)
+    t, cues = start, []
+    for k in range(n):
+        dur = float(rng.uniform(1.0, 4.5))
+        cues.append([t, t + dur, k])
+        gap = float(rng.uniform(0.2, 3.0))
+        if rng.random() < 0.04:
+            gap += float(rng.uniform(15, 60))      # action scene without dialogue
+        t += dur + gap
+    return cues
+
+
+def ref_cues(base, text="line k{k}"):
+    return [[s, e, text.format(k=k)] for s, e, k in base]
+
+
+def tgt_cues(base, warp=lambda t: t, drop=lambda s: False, text="réplique k{k}"):
+    """Target subtitle for the same dialogue: start times go through `warp` (the target's own
+    timeline), durations follow its local slope; cues whose reference start satisfies `drop`
+    (a scene missing from the target's edition) are absent."""
+    out = []
+    for s, e, k in base:
+        if drop(s):
+            continue
+        ws = warp(s)
+        out.append([ws, ws + (e - s) * (warp(s + 1e-3) - ws) / 1e-3, text.format(k=k)])
+    return out
+
+
+def cut(t0, length, then=lambda t: t):
+    """The video's scene [t0, t0+length) is missing from the target's edition."""
+    return dict(drop=lambda s: t0 <= s < t0 + length,
+                warp=lambda t: then(t - length if t >= t0 + length else t))
+
+
+def accuracy(out, base, tol=0.3):
+    """Share of output cues that start within `tol` s of the reference cue saying the same thing."""
+    truth = {k: s for s, _, k in base}
+    hits = total = 0
+    for s, _, x in out:
+        m = re.search(r"k(\d+)", x)
+        if m and int(m.group(1)) in truth:
+            total += 1
+            hits += abs(s - truth[int(m.group(1))]) <= tol
+    return hits / total if total else 0.0
