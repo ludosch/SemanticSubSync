@@ -11,7 +11,8 @@ semantic-subsync Movie.fr.srt Movie.mkv     # reference: the subtitle embedded i
 
 ## At a glance
 
-The same subtitle files given to each tool, with a reference subtitle that is in sync with the video:
+One example, built for this project ([`examples/lighthouse`](examples/lighthouse)): the same
+subtitle files given to each tool, with a reference subtitle that is in sync with the video.
 
 | Tool | Scene missing + 25 fps | Extra scene | Wrong reference (commentary track) |
 |---|---|---|---|
@@ -20,8 +21,9 @@ The same subtitle files given to each tool, with a reference subtitle that is in
 | LAPSE 2.2.3 | ❌ 52 %, 70 s off, says "solid" | ❌ 52 %, 70 s off, says "solid" | ❌ moves lines by up to 75 s, says "solid" |
 | **SemanticSubSync** | ✅ **100 %** | ✅ **100 %** | ✅ **refuses, file left alone** |
 
-Share of lines that end up within 300 ms of their true position. Details and scripts to rerun
-it: [`examples/lighthouse`](examples/lighthouse).
+Share of lines that end up within 300 ms of their true position, on this example only: the
+figures describe these files, not every video. Details and scripts to rerun it are in the
+example folder.
 
 ## Why this project exists
 
@@ -30,10 +32,11 @@ video: another frame rate (23.976 vs 25 fps), a scene added or cut, a different 
 result is a subtitle that drifts, or that is fine for 20 minutes and then off by 4 seconds.
 
 The usual tools align on the **audio** (ffsubsync, alass in audio mode) or on the **timing
-pattern** of another subtitle (alass, ffsubsync with a subtitle reference). In practice:
+pattern** of another subtitle (alass, ffsubsync with a subtitle reference). In our tests:
 
-- they fail on cuts and inserted scenes, the most common real-world case;
-- they **never say when they fail**: a subtitle moved by 200 seconds is reported as a success.
+- they often failed on cuts and inserted scenes;
+- they **rarely said when they failed**: a subtitle moved by a minute or more could still be
+  reported as a success.
 
 Yet most videos already carry a perfectly timed subtitle: the embedded track, often in the
 original language. SemanticSubSync uses it as a reference and matches lines **by meaning**
@@ -99,6 +102,10 @@ the same output.
 
 ## Results
 
+These figures come from the author's own library. They show how the tool behaved there, not
+what it will do on any video: on other files, other languages or other hardware, they will
+differ.
+
 Measured on 15 videos that carry both a French and an original-language embedded subtitle. The
 French track is distorted in 7 realistic ways (constant offset, frame-rate change in both
 directions, 3 cuts, inserted and removed scenes, cuts plus frame-rate change), then re-synced
@@ -111,17 +118,19 @@ of their true position.
 | alass | 84 / 105 | 10, none reported |
 
 On 11 invalid cases (a commentary track or a partial track taken as reference),
-SemanticSubSync refuses the ones where it would have done damage: the coverage of the
-anchored lines is 0.07 or less, against 0.32 to 0.82 on valid cases.
+SemanticSubSync refused the ones where it would have done damage: there, the coverage of the
+anchored lines was 0.07 or less, against 0.32 to 0.82 on the valid cases. The refusal
+threshold (0.25) sits in that gap; another library may need another value (`--min-coverage`).
 
 For comparison, the audio-only tools on the same kind of distortions: ffsubsync 29 / 44,
 alass 24 / 44, subaligner 2 / 44, with no confidence signal on failures.
 
-Speed: about 85 s for a full movie on a 2-core Celeron J4025 NAS, 590 MB of RAM at peak, with
-the int8 model (see [Model](#model)).
+Speed on the author's NAS (2-core Celeron J4025), with the int8 model (see [Model](#model)):
+about 85 s and 590 MB of RAM at peak for a full movie. It depends on the hardware and on the
+number of lines.
 
-These numbers come from a personal library and are not a published benchmark. The test suite
-reproduces each distortion on synthetic dialogue (see [Development](#development)).
+This is not a published benchmark. The test suite reproduces each distortion on synthetic
+dialogue (see [Development](#development)).
 
 ## Installation
 
@@ -136,6 +145,14 @@ pip install "semantic-subsync[model] @ git+https://github.com/ludosch/SemanticSu
 ```
 
 The model (about 240 MB) is downloaded from Hugging Face on first use.
+
+Each [release](https://github.com/ludosch/SemanticSubSync/releases) also carries the Python
+package and a Docker image for amd64 and arm64, to load with `docker load`:
+
+```bash
+gh release download v0.9.0 -R ludosch/SemanticSubSync -p "*docker-amd64*"
+docker load -i semantic-subsync-0.9.0-docker-amd64.tar.gz
+```
 
 ## Usage
 
@@ -173,7 +190,7 @@ The engine knows nothing about media servers or subtitle managers. Integrations 
 
 | Variable | Meaning |
 |---|---|
-| `SEMSYNC_MODEL_DIR` | Folder of a local copy of the model, e.g. the int8 one made by [`tools/quantize_model.py`](tools/quantize_model.py): 112 MB, about 40 % faster on CPU and 2.5 times less RAM, same results in our tests |
+| `SEMSYNC_MODEL_DIR` | Folder of a local copy of the model, e.g. the int8 one made by [`tools/quantize_model.py`](tools/quantize_model.py): 112 MB; on the author's NAS it was about 40 % faster and used 2.5 times less RAM, with the same results |
 | `SEMSYNC_CACHE` | Optional folder where embeddings are cached on disk |
 
 The model is published by [sentence-transformers](https://www.sbert.net/) under the Apache 2.0

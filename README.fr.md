@@ -11,7 +11,9 @@ semantic-subsync Film.fr.srt Film.mkv     # référence : le sous-titre intégr�
 
 ## En bref
 
-Les mêmes fichiers de sous-titres confiés à chaque outil, avec un sous-titre de référence calé sur la vidéo :
+Un exemple, construit pour ce projet ([`examples/lighthouse`](examples/lighthouse), en
+anglais) : les mêmes fichiers de sous-titres confiés à chaque outil, avec un sous-titre de
+référence calé sur la vidéo.
 
 | Outil | Scène absente + 25 i/s | Scène en trop | Mauvaise référence (piste commentaire) |
 |---|---|---|---|
@@ -20,8 +22,9 @@ Les mêmes fichiers de sous-titres confiés à chaque outil, avec un sous-titre 
 | LAPSE 2.2.3 | ❌ 52 %, 70 s d'écart, se dit « solid » | ❌ 52 %, 70 s d'écart, se dit « solid » | ❌ déplace des répliques de 75 s au plus, se dit « solid » |
 | **SemanticSubSync** | ✅ **100 %** | ✅ **100 %** | ✅ **refuse, fichier intact** |
 
-Part des répliques qui finissent à moins de 300 ms de leur vraie position. Détails et scripts
-pour le rejouer : [`examples/lighthouse`](examples/lighthouse) (en anglais).
+Part des répliques qui finissent à moins de 300 ms de leur vraie position, sur cet exemple
+seulement : les chiffres décrivent ces fichiers, pas toutes les vidéos. Les détails et les
+scripts pour le rejouer sont dans le dossier de l'exemple.
 
 ## Pourquoi ce projet existe
 
@@ -31,11 +34,12 @@ générique différent. Résultat : un sous-titre qui dérive, ou qui est juste 
 puis décalé de 4 secondes.
 
 Les outils habituels se calent sur l'**audio** (ffsubsync, alass en mode audio) ou sur le
-**rythme** d'un autre sous-titre (alass, ffsubsync avec un sous-titre de référence). En pratique :
+**rythme** d'un autre sous-titre (alass, ffsubsync avec un sous-titre de référence). Dans nos
+essais :
 
-- ils échouent sur les coupes et les scènes ajoutées, le cas le plus courant ;
-- ils **ne signalent jamais leurs échecs** : un sous-titre décalé de 200 secondes est annoncé
-  comme réussi.
+- ils ont souvent échoué sur les coupes et les scènes ajoutées ;
+- ils **signalaient rarement leurs échecs** : un sous-titre décalé d'une minute ou plus
+  pouvait être annoncé comme réussi.
 
 Or la plupart des vidéos contiennent déjà un sous-titre parfaitement calé : la piste intégrée,
 souvent en version originale. SemanticSubSync s'en sert comme référence et apparie les
@@ -104,6 +108,10 @@ toujours le même résultat.
 
 ## Résultats
 
+Ces chiffres viennent de la vidéothèque de l'auteur. Ils montrent comment l'outil s'y est
+comporté, pas ce qu'il fera sur n'importe quelle vidéo : avec d'autres fichiers, d'autres
+langues ou un autre matériel, ils seront différents.
+
 Mesurés sur 15 vidéos qui contiennent à la fois un sous-titre français et un sous-titre en
 version originale intégrés. La piste française est déformée de 7 façons réalistes (décalage
 constant, changement de cadence dans les deux sens, 3 coupes, scènes ajoutées et retirées,
@@ -116,19 +124,21 @@ réussi quand au moins 95 % des répliques commencent à moins de 300 ms de leur
 | alass | 84 / 105 | 10, aucun signalé |
 
 Sur 11 cas invalides (piste commentaire ou piste partielle prise comme référence),
-SemanticSubSync refuse ceux où il aurait fait des dégâts : la couverture des répliques ancrées
-y est de 0,07 au plus, contre 0,32 à 0,82 sur les cas valides.
+SemanticSubSync a refusé ceux où il aurait fait des dégâts : la couverture des répliques
+ancrées y était de 0,07 au plus, contre 0,32 à 0,82 sur les cas valides. Le seuil de refus
+(0,25) se situe dans cet écart ; une autre vidéothèque peut demander une autre valeur
+(`--min-coverage`).
 
 Pour comparaison, les outils basés sur l'audio seul, sur le même genre de déformations :
 ffsubsync 29 / 44, alass 24 / 44, subaligner 2 / 44, sans aucun signal de confiance en cas
 d'échec.
 
-Vitesse : environ 85 s pour un film complet sur un NAS à Celeron J4025 (2 cœurs), 590 Mo de RAM
-au maximum, avec le modèle int8 (voir [Modèle](#modèle)).
+Vitesse sur le NAS de l'auteur (Celeron J4025, 2 cœurs), avec le modèle int8 (voir
+[Modèle](#modèle)) : environ 85 s et 590 Mo de RAM au maximum pour un film complet. Elle dépend
+du matériel et du nombre de répliques.
 
-Ces chiffres viennent d'une vidéothèque personnelle et ne constituent pas un benchmark publié.
-La suite de tests reproduit chaque déformation sur des dialogues synthétiques (voir
-[Développement](#développement)).
+Ce n'est pas un benchmark publié. La suite de tests reproduit chaque déformation sur des
+dialogues synthétiques (voir [Développement](#développement)).
 
 ## Installation
 
@@ -143,6 +153,14 @@ pip install "semantic-subsync[model] @ git+https://github.com/ludosch/SemanticSu
 ```
 
 Le modèle (environ 240 Mo) est téléchargé depuis Hugging Face à la première utilisation.
+
+Chaque [release](https://github.com/ludosch/SemanticSubSync/releases) contient aussi le paquet
+Python et une image Docker pour amd64 et arm64, à charger avec `docker load` :
+
+```bash
+gh release download v0.9.0 -R ludosch/SemanticSubSync -p "*docker-amd64*"
+docker load -i semantic-subsync-0.9.0-docker-amd64.tar.gz
+```
 
 ## Utilisation
 
@@ -182,7 +200,7 @@ dans [`integrations/`](integrations) :
 
 | Variable | Rôle |
 |---|---|
-| `SEMSYNC_MODEL_DIR` | Dossier d'une copie locale du modèle, par exemple la version int8 produite par [`tools/quantize_model.py`](tools/quantize_model.py) : 112 Mo, environ 40 % plus rapide sur processeur et 2,5 fois moins de RAM, mêmes résultats dans nos tests |
+| `SEMSYNC_MODEL_DIR` | Dossier d'une copie locale du modèle, par exemple la version int8 produite par [`tools/quantize_model.py`](tools/quantize_model.py) : 112 Mo ; sur le NAS de l'auteur, il était environ 40 % plus rapide et utilisait 2,5 fois moins de RAM, avec les mêmes résultats |
 | `SEMSYNC_CACHE` | Dossier facultatif où les vecteurs sont mis en cache sur disque |
 
 Le modèle est publié par [sentence-transformers](https://www.sbert.net/) sous licence Apache 2.0.

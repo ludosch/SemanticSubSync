@@ -1,0 +1,75 @@
+name: release
+
+# A tag vX.Y.Z builds the Python package and the Docker image (amd64 and arm64), and attaches
+# them to a GitHub release. Started by hand, it only builds them as workflow artifacts.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  package:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - id: version
+        run: |
+          version=$(uv run python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match the version in pyproject.toml ($version)"
+            exit 1
+          fi
+      - run: uv build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: python-package
+          path: dist/*
+
+  docker:
+    needs: package
+    strategy:
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: amd64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    env:
+      IMAGE: semantic-subsync:${{ needs.package.outputs.version }}
+      FILE: semantic-subsync-${{ needs.package.outputs.version }}-docker-${{ matrix.arch }}.tar.gz
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t "$IMAGE" .
+      - run: docker run --rm "$IMAGE" semantic-subsync --version
+      - run: docker save "$IMAGE" | gzip > "$FILE"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: docker-${{ matrix.arch }}
+          path: ${{ env.FILE }}
+          compression-level: 0
+
+  release:
+    if: github.ref_type == 'tag'
+    needs: [package, docker]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: assets
+          merge-multiple: true
+      - name: Release notes from the changelog
+        run: |
+          awk -v v="${GITHUB_REF_NAME#v}" 'index($0, "## [" v "]") == 1 {on=1; next} /^## / {on=0} on' CHANGELOG.md > notes.md
+          cat notes.md
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" assets/* --title "$GITHUB_REF_NAME" --notes-file notes.md

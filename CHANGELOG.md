@@ -12,6 +12,7 @@ All notable changes to this project are documented here. The format follows
 - `core.resync()`: alignment plus the decision (`corrected`, `in_sync`, `refused`).
 - `tools/quantize_model.py`: builds the int8 model used on small CPUs.
 - MIT license, contribution guide, Bazarr integration guide.
+- Releases carry the Python package and a Docker image for amd64 and arm64, built by the CI.
 - `examples/lighthouse`: an original dialogue in three situations (scene missing, extra scene,
   wrong reference), with the scripts that compare SemanticSubSync with alass, ffsubsync and LAPSE.
 
