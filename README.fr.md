@@ -68,6 +68,7 @@ corrected -> downloaded.fr.synced.srt (2 segment(s), largest shift +90.69 s) [re
 | Encore. Plus fort cette fois. | 6:18.7 | 4:55.9 (82,8 s d'avance) | 6:18.7 ✅ |
 | Oui ? | 9:26.5 | 7:56.0 (90,5 s d'avance) | 9:26.4 ✅ |
 
+
 ## Cadre d'utilisation
 
 **Adapté**
@@ -84,6 +85,19 @@ corrected -> downloaded.fr.synced.srt (2 segment(s), largest shift +90.69 s) [re
   anglais téléchargé) : elle a les mêmes défauts de timing que le fichier à corriger.
 
 ## Fonctionnement
+
+Ce qu'il corrige, un cas à la fois, sur 40 secondes de dialogue (un schéma : un trait par
+réplique, en bleu ce qui est calé, en orange ce qui est décalé, en vert ce qui est corrigé) :
+
+![Décalage : chaque réplique française a 3 s de retard et est avancée de 3 s](docs/fix-offset.svg)
+
+![Cadence d'images : le français dérive de plus en plus et est réétiré](docs/fix-frame-rate.svg)
+
+![Répliques manquantes dans le français : le français après le trou est décalé plus tard](docs/fix-missing-lines.svg)
+
+![Répliques en trop dans le français : le français qui suit est avancé et les répliques en trop sont retirées](docs/fix-extra-lines.svg)
+
+![Mauvaise référence : aucune réplique du commentaire ne correspond au français, le fichier est laissé tel quel](docs/fix-wrong-reference.svg)
 
 1. Chaque réplique est nettoyée (balises, annotations pour sourds et malentendants, noms des
    personnages), puis transformée en vecteur par un modèle de phrases multilingue

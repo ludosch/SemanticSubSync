@@ -31,11 +31,7 @@ within 300 ms of its true position.
 | LAPSE 2.2.3 | ❌ 52 %, 70 s off, verdict "solid" | ❌ 52 %, 70 s off, verdict "solid" | ❌ changes the file (up to 75 s), verdict "solid" |
 | **SemanticSubSync 0.9.0** | ✅ **100 %** | ✅ **100 %** | ✅ **refused, file left alone** |
 
-![Situation 1, error of each line](../../docs/example-missing-scene.svg)
-
-![Situation 2, error of each line](../../docs/example-extra-scene.svg)
-
-What the charts show:
+Why the tools differ:
 
 - **ffsubsync and LAPSE** find one global correction (here the frame rate) and apply it to the
   whole file. Everything after the cut stays off by the length of the scene.
@@ -54,7 +50,7 @@ python examples/lighthouse/make_example.py                     # rebuilds the .s
 semantic-subsync examples/lighthouse/1-missing-scene/downloaded.fr.srt \
                  examples/lighthouse/1-missing-scene/reference.en.srt
 uv run --extra model python examples/lighthouse/compare.py     # every tool found on PATH
-uv run python examples/lighthouse/plot.py examples/lighthouse/1-missing-scene chart.svg "Situation 1"
+python examples/lighthouse/plot.py docs                       # the schematics of the README
 ```
 
 `compare.py` runs the tools it finds on the PATH (`alass-cli` or `alass`, `ffsubsync`, `lapse`)

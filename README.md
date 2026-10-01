@@ -64,6 +64,7 @@ corrected -> downloaded.fr.synced.srt (2 segment(s), largest shift +90.69 s) [re
 | Encore. Plus fort cette fois. | 6:18.7 | 4:55.9 (82.8 s early) | 6:18.7 ✅ |
 | Oui ? | 9:26.5 | 7:56.0 (90.5 s early) | 9:26.4 ✅ |
 
+
 ## Scope
 
 **Good fit**
@@ -78,6 +79,19 @@ corrected -> downloaded.fr.synced.srt (2 segment(s), largest shift +90.69 s) [re
   subtitle): it has the same timing problems as the file you want to fix.
 
 ## How it works
+
+What it corrects, one case at a time, on 40 seconds of dialogue (a schematic: one mark per
+line, blue in sync, orange out of sync, green fixed):
+
+![Offset: every French line is 3 s late and is moved back by 3 s](docs/fix-offset.svg)
+
+![Frame rate: the French drifts more and more and is stretched back](docs/fix-frame-rate.svg)
+
+![Lines missing from the French: the French after the gap is moved later](docs/fix-missing-lines.svg)
+
+![Extra lines in the French: the French after them is moved earlier and the extra lines are left out](docs/fix-extra-lines.svg)
+
+![Wrong reference: no line of the commentary matches the French, the file is left as it is](docs/fix-wrong-reference.svg)
 
 1. Every line is cleaned (tags, hearing-impaired annotations, speaker names) and turned into a
    vector by a multilingual sentence model
