@@ -82,7 +82,7 @@ def test_lines_of_a_scene_the_video_lacks_are_dropped(seed):
 
 @pytest.mark.parametrize("recap", [10, 25])
 def test_recap_the_video_lacks_is_dropped_not_stacked_at_zero(recap):
-    """Real case, Game of Thrones S02E03: one release opens with a 90 s "Previously on" recap that
+    """Real case: one release of a TV episode opens with a 90 s "Previously on" recap that
     the video lacks. The recap lines would start before 0 s: they are left out instead of being
     written at 00:00:00,000."""
     base = dialogue(n=300, seed=21, start=1.0)
@@ -174,7 +174,7 @@ def test_unrelated_reference_is_refused():
 
 
 def test_commentary_like_reference_is_refused():
-    """Like the Back to the Future commentary track: only a few lines in common."""
+    """Like a commentary track taken as reference (real case): only a few lines in common."""
     base = dialogue(n=300, seed=9)
     ref = [[s, e, f"line k{k}" if k % 15 == 0 else f"line k{k + 10000}"] for s, e, k in base]
     out, st = run(tgt_cues(base, warp=lambda t: t + 20), ref)
@@ -229,7 +229,7 @@ def _split_sentences(base, every):
 
 @pytest.mark.parametrize("n_cues,shift", [(4, -1.9), (6, -1.9), (8, -1.9), (5, 2.5)])
 def test_short_local_disagreement_is_not_a_cut(n_cues, shift):
-    """Regression for Chernobyl S01E02: the target was in sync, but over 4 consecutive lines the
+    """Regression for a real TV episode: the target was in sync, but over 4 consecutive lines the
     reference was timed ~1.9 s apart (a sentence split differently). That is not a cut: no
     segment shorter than min_seg, the file stays untouched."""
     base = dialogue(n=300, seed=18)

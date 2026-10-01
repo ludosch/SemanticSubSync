@@ -49,7 +49,7 @@ def test_unknown_language_is_guessed(tmp_path):
 @pytest.mark.parametrize("name,lang", [
     ("Movie.fr.srt", "fr"), ("Show - S01E01.fr.hi.srt", "fr"), ("Show.S01E01.pt-br.srt", "pt-br"),
     ("Show.S01E01.PT-BR.forced.srt", "pt-br"), ("Film.rus.srt", "rus"), ("Film.srt", None),
-    ("The.Office.US.S03E10.srt", None),
+    ("The.Show.US.S03E10.srt", None),
 ])
 def test_language_of(name, lang):
     assert media.language_of(name) == lang
