@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from semantic_subsync import core, worker
+from semantic_subsync import core, media, worker
 from synth import dialogue, fake_embed, ref_cues, tgt_cues
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -18,14 +18,14 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setattr(worker, "QUEUE", str(tmp_path / "queue"))
     monkeypatch.setattr(worker, "FAILED", str(tmp_path / "failed"))
     monkeypatch.setattr(core, "embed", fake_embed)
-    media = tmp_path / "Show" / "Season 1"
-    media.mkdir(parents=True)
-    video = media / "Show - S01E01.mkv"
+    folder = tmp_path / "Show" / "Season 1"
+    folder.mkdir(parents=True)
+    video = folder / "Show - S01E01.mkv"
     video.write_bytes(b"")
-    sub = media / "Show - S01E01.fr.srt"
+    sub = folder / "Show - S01E01.fr.srt"
     base = dialogue(n=200, seed=21)
     refs = [(ref_cues(base), "#3 eng English")]
-    monkeypatch.setattr(worker, "references", lambda v, wd: refs)
+    monkeypatch.setattr(media, "embedded_references", lambda v, wd, streams=None: refs)
     return dict(tmp=tmp_path, video=str(video), sub=str(sub), base=base, refs=refs)
 
 
@@ -47,13 +47,13 @@ def test_read_srt_cp1252(tmp_path):
     p = tmp_path / "a.srt"
     # French on purpose: accented letters are where cp1252 and UTF-8 differ
     p.write_bytes("1\n00:00:01,000 --> 00:00:02,000\nÇa été déjà là\n".encode("cp1252"))
-    assert worker.read_srt(str(p))[0][2] == "Ça été déjà là"
+    assert media.read_srt(str(p))[0][2] == "Ça été déjà là"
 
 
 def test_read_srt_utf8_bom(tmp_path):
     p = tmp_path / "a.srt"
     p.write_bytes("﻿1\n00:00:01,000 --> 00:00:02,000\nÇa\n".encode("utf-8"))
-    assert worker.read_srt(str(p))[0][2] == "Ça"
+    assert media.read_srt(str(p))[0][2] == "Ça"
 
 
 def test_corrected_writes_side_file_and_keeps_original(env):
@@ -117,10 +117,10 @@ def test_skipped(env, which):
 
 
 def test_backfill_queues_only_subtitles_next_to_their_video(env):
-    media = Path(env["video"]).parent
+    folder = Path(env["video"]).parent
     core.write(env["sub"], tgt_cues(env["base"]))
-    (media / "Show - S01E01.semsync.fr.srt").write_text("x", encoding="utf-8")   # our own output
-    (media / "Orphan.fr.srt").write_text("x", encoding="utf-8")                  # no video
+    (folder / "Show - S01E01.semsync.fr.srt").write_text("x", encoding="utf-8")   # our own output
+    (folder / "Orphan.fr.srt").write_text("x", encoding="utf-8")                  # no video
     worker.backfill(str(env["tmp"] / "Show"))
     jobs = [json.loads(p.read_text(encoding="utf-8")) for p in Path(worker.QUEUE).glob("*.job")]
     assert [(j["video"], j["sub"], j["origin"]) for j in jobs] == [(env["video"], env["sub"], "backfill")]
@@ -129,7 +129,7 @@ def test_backfill_queues_only_subtitles_next_to_their_video(env):
 def test_bazarr_enqueue_is_atomic_and_standalone(tmp_path):
     """enqueue.py runs under Bazarr's own python: no dependency, writes next to itself."""
     script = tmp_path / "enqueue.py"
-    script.write_bytes((ROOT / "bazarr" / "enqueue.py").read_bytes())
+    script.write_bytes((ROOT / "integrations" / "bazarr" / "enqueue.py").read_bytes())
     r = subprocess.run([sys.executable, str(script), "/data/v é.mkv", "/data/v é.fr.srt", "87.5"],
                        capture_output=True, text=True, encoding="utf-8",
                        env={**os.environ, "PYTHONIOENCODING": "utf-8"})

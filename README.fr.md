@@ -2,56 +2,178 @@
 
 # SemanticSubSync
 
-Recale un sous-titre (par exemple un sous-titre français téléchargé) sur un sous-titre de référence
-dans une autre langue (par exemple la piste VO intégrée à la vidéo) en appariant les répliques
-**par leur sens**, et non par la forme du timing ni par l'audio.
+Recale un sous-titre en comparant **ce qui est dit**, réplique par réplique, avec un sous-titre
+déjà synchronisé, même quand les deux sont dans des langues différentes.
+
+```console
+$ semantic-subsync Film.fr.srt Film.mkv     # référence : le sous-titre intégré à la vidéo
+corrected -> Film.fr.synced.srt (2 segment(s), largest shift +4.27 s) [reference: #3 eng English]
+```
+
+## Pourquoi ce projet existe
+
+Les sous-titres téléchargés pour un film ou un épisode sont souvent faits pour une autre version
+de la même vidéo : une autre cadence d'images (23,976 ou 25 i/s), une scène ajoutée ou coupée, un
+générique différent. Résultat : un sous-titre qui dérive, ou qui est juste pendant 20 minutes
+puis décalé de 4 secondes.
+
+Les outils habituels se calent sur l'**audio** (ffsubsync, alass en mode audio) ou sur le
+**rythme** d'un autre sous-titre (alass, ffsubsync avec un sous-titre de référence). En pratique :
+
+- ils échouent sur les coupes et les scènes ajoutées, le cas le plus courant ;
+- ils **ne signalent jamais leurs échecs** : un sous-titre décalé de 200 secondes est annoncé
+  comme réussi.
+
+Or la plupart des vidéos contiennent déjà un sous-titre parfaitement calé : la piste intégrée,
+souvent en version originale. SemanticSubSync s'en sert comme référence et apparie les
+répliques **par leur sens** grâce à un petit modèle de phrases multilingue : « Where did you put
+the keys? » et « Où as-tu mis les clés ? » sont reconnues comme la même réplique. Quand trop peu
+de répliques correspondent (mauvaise référence, piste commentaire, montage différent), il
+**refuse** et ne touche pas au fichier.
+
+## Cadre d'utilisation
+
+**Adapté**
+- La vidéo contient un sous-titre intégré au format **texte** (SRT, ASS, WebVTT, mov_text),
+  dans n'importe quelle langue.
+- Ou vous avez un autre fichier de sous-titres dont vous savez qu'il est calé sur votre vidéo.
+- Le sous-titre à corriger est un `.srt` classique.
+
+**Pas adapté**
+- Aucune référence : cet outil n'écoute pas l'audio. Utilisez ffsubsync ou alass.
+- Sous-titres intégrés uniquement en image (PGS, VobSub) : il faudrait de l'OCR, hors du
+  périmètre.
+- Une référence qui vient d'une autre version que votre vidéo (par exemple un sous-titre
+  anglais téléchargé) : elle a les mêmes défauts de timing que le fichier à corriger.
 
 ## Fonctionnement
 
-1. Chaque réplique est nettoyée (balises, sous-titres pour sourds, noms de personnages) puis
-   transformée en vecteur par un modèle de phrases multilingue (MiniLM, local et déterministe).
-2. Candidats : les répliques cibles, seules ou fusionnées par deux (phrase coupée en deux), sont
-   appariées aux 3 meilleures répliques de référence, seules ou fusionnées par deux.
-3. Une plus longue chaîne croissante pondérée donne des ancres monotones ; un filtre de voisinage
-   écarte les ancres dont le décalage contredit celui de leurs voisines.
-4. Une dérive de framerate globale est choisie parmi des ratios fixes (23,976 / 24 / 25 / 29,97 / 30),
-   puis la chronologie est découpée en segments à décalage constant (coupes, scènes ajoutées ou retirées).
+1. Chaque réplique est nettoyée (balises, annotations pour sourds et malentendants, noms des
+   personnages), puis transformée en vecteur par un modèle de phrases multilingue
+   ([paraphrase-multilingual-MiniLM-L12-v2](https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2),
+   exécuté en local sur le processeur via [fastembed](https://github.com/qdrant/fastembed)).
+2. Chaque réplique, seule ou fusionnée avec la suivante (une phrase coupée en deux), est
+   comparée aux répliques de la référence, seules ou fusionnées par deux. Les 3 meilleures
+   candidates au-dessus d'un seuil de similarité sont gardées.
+3. Une plus longue chaîne croissante pondérée garde les candidates qui respectent l'ordre du
+   dialogue. Les ancres dont le décalage contredit celui de leurs voisines sont écartées.
+4. Une seule cadence d'images est retenue pour tout le fichier parmi les valeurs standard
+   (23,976 / 24 / 25 / 29,97 / 30). La chronologie est ensuite découpée en segments à décalage
+   constant, ce qui absorbe les coupes et les scènes ajoutées.
 5. Garde-fous :
-   - couverture inférieure à 0,25 : refus (la référence ne dit pas la même chose, par exemple une piste commentaire) ;
-   - toutes les corrections inférieures à 0,5 s : le fichier n'est pas modifié (biais naturel entre deux langues) ;
-   - un segment de moins de 60 s est un désaccord local, pas une coupe.
+   - moins de 25 % des répliques ancrées : **refusé**, la référence ne dit pas la même chose ;
+   - toutes les corrections sous 0,5 s : le fichier **n'est pas modifié** (c'est l'écart naturel
+     entre deux langues, pas un problème de synchro) ;
+   - les segments de moins de 60 s sont traités comme des erreurs locales, pas comme des coupes.
+
+Aucun service d'IA, aucun accès réseau une fois le modèle téléchargé, et la même entrée donne
+toujours le même résultat.
+
+## Résultats
+
+Mesurés sur 15 vidéos qui contiennent à la fois un sous-titre français et un sous-titre en
+version originale intégrés. La piste française est déformée de 7 façons réalistes (décalage
+constant, changement de cadence dans les deux sens, 3 coupes, scènes ajoutées et retirées,
+coupes avec changement de cadence), puis recalée sur la piste en version originale. Un cas est
+réussi quand au moins 95 % des répliques commencent à moins de 300 ms de leur vraie position.
+
+| Outil (sous-titre intégré comme référence) | Cas réussis | Échecs graves (< 80 % des répliques) |
+|---|---|---|
+| **SemanticSubSync** (0.7) | **104 / 105** | 1 |
+| alass | 84 / 105 | 10, aucun signalé |
+
+Sur 11 cas invalides (piste commentaire ou piste partielle prise comme référence),
+SemanticSubSync refuse ceux où il aurait fait des dégâts : la couverture des répliques ancrées
+y est de 0,07 au plus, contre 0,32 à 0,82 sur les cas valides.
+
+Pour comparaison, les outils basés sur l'audio seul, sur le même genre de déformations :
+ffsubsync 29 / 44, alass 24 / 44, subaligner 2 / 44, sans aucun signal de confiance en cas
+d'échec.
+
+Vitesse : environ 85 s pour un film complet sur un NAS à Celeron J4025 (2 cœurs), 590 Mo de RAM
+au maximum, avec le modèle int8 (voir [Modèle](#modèle)).
+
+Ces chiffres viennent d'une vidéothèque personnelle et ne constituent pas un benchmark publié.
+La suite de tests reproduit chaque déformation sur des dialogues synthétiques (voir
+[Développement](#développement)).
+
+## Installation
+
+Python 3.11 ou plus récent. ffmpeg / ffprobe ne sont nécessaires que si la référence est une
+vidéo.
+
+```bash
+pip install "semantic-subsync[model] @ git+https://github.com/ludosch/SemanticSubSync"
+```
+
+Le modèle (environ 240 Mo) est téléchargé depuis Hugging Face à la première utilisation.
 
 ## Utilisation
 
 ```bash
-semantic-subsync cible.fr.srt reference.en.srt sortie.srt     # statistiques JSON sur stdout
+semantic-subsync SOUS-TITRE REFERENCE [-o SORTIE] [--track INDEX] [--min-coverage X] [--json]
 ```
 
-### Worker
+- `REFERENCE` est un `.srt` calé sur la vidéo, ou la vidéo elle-même. Avec une vidéo, le
+  sous-titre texte intégré le plus complet est utilisé, quelle que soit sa langue, hors pistes
+  forcées. `--track` choisit une piste par son index ffprobe.
+- Le sous-titre d'entrée n'est jamais modifié. Le résultat va par défaut dans
+  `SOUS-TITRE.synced.srt`.
+- Déjà synchronisé : rien n'est écrit.
+- Code de sortie : `0` corrigé ou déjà synchronisé, `1` refusé, `2` erreur.
+- `--json` affiche la décision et les statistiques (couverture, segments, décalages).
 
-`semantic-subsync-worker run` traite le dossier `/data/.semsync/queue`, alimenté par le
-post-traitement personnalisé de Bazarr (`bazarr/enqueue.py`). Pour chaque sous-titre téléchargé, il
-extrait les sous-titres texte intégrés à la vidéo (hors pistes forcées), prend le plus complet comme
-référence et écrit `<vidéo>.semsync.<langue>.srt` à côté de la vidéo quand une correction est
-nécessaire. Le fichier téléchargé n'est jamais modifié.
+Depuis Python :
+
+```python
+from semantic_subsync import core, media
+
+status, cues, stats = core.resync(media.read_srt("Film.fr.srt"), core.parse("Film.en.srt"))
+if status == "corrected":
+    core.write("Film.fr.synced.srt", cues)
+```
+
+## Intégrations
+
+Le moteur ne connaît ni serveur multimédia ni gestionnaire de sous-titres. Les intégrations sont
+dans [`integrations/`](integrations) :
+
+- [**Bazarr**](integrations/bazarr/README.md) (en anglais) : chaque sous-titre téléchargé est
+  vérifié automatiquement par un worker en arrière-plan, et une copie corrigée est écrite à côté
+  de la vidéo si besoin.
+
+## Modèle
 
 | Variable | Rôle |
 |---|---|
-| `SEMSYNC_MODEL_DIR` | Copie locale du modèle (par exemple la version quantifiée int8) |
-| `SEMSYNC_DIR` | Dossier de la file, des tâches en échec et du journal (par défaut `/data/.semsync`) |
-| `SEMSYNC_CACHE` | Cache disque facultatif des vecteurs |
+| `SEMSYNC_MODEL_DIR` | Dossier d'une copie locale du modèle, par exemple la version int8 produite par [`tools/quantize_model.py`](tools/quantize_model.py) : 112 Mo, environ 40 % plus rapide sur processeur et 2,5 fois moins de RAM, mêmes résultats dans nos tests |
+| `SEMSYNC_CACHE` | Dossier facultatif où les vecteurs sont mis en cache sur disque |
+
+Le modèle est publié par [sentence-transformers](https://www.sbert.net/) sous licence Apache 2.0.
 
 ## Développement
 
 ```bash
-mise x -- uv run pytest                                    # rapide, sans modèle
-SEMSYNC_TEST_MODEL=1 SEMSYNC_MODEL_DIR=/chemin/vers/minilm-int8g \
-  mise x -- uv run --extra model pytest -m model           # de bout en bout avec le vrai modèle
+mise x -- uv run pytest                                    # rapide, sans le modèle
+SEMSYNC_TEST_MODEL=1 mise x -- uv run --extra model pytest -m model   # de bout en bout avec le vrai modèle
 ```
 
-Les tests unitaires tournent sur des dialogues **synthétiques** (`tests/synth.py`). Chaque réplique
-porte un « concept » comme `k17`, qu'un faux modèle déterministe transforme en vecteur fixe : les
-deux langues d'un même concept se ressemblent à ~0,9, deux répliques sans rapport à ~0,1. On teste
-ainsi l'algorithme indépendamment du modèle, sur chaque déformation du bench : décalage, framerate,
-coupes, scènes en plus, phrases découpées différemment, répliques courtes répétées, référence sans
-rapport. Aucun extrait de film n'est versionné.
+Les tests unitaires tournent sur des dialogues **synthétiques** (`tests/synth.py`). Chaque
+réplique porte un jeton de « concept » comme `k17`, qu'un faux modèle déterministe transforme
+en vecteur fixe : les deux langues d'un même concept se ressemblent à environ 0,9, deux
+répliques sans rapport à environ 0,1, comme avec le vrai modèle. On teste ainsi l'algorithme
+indépendamment du modèle, sur chaque déformation du benchmark. Aucun extrait de film n'est
+stocké dans le dépôt.
+
+Voir [CONTRIBUTING.md](CONTRIBUTING.md) (en anglais) et le [journal des versions](CHANGELOG.md).
+
+## Remerciements
+
+- [ffsubsync](https://github.com/smacke/ffsubsync) et [alass](https://github.com/kaegi/alass),
+  les outils de référence auxquels ce projet a été comparé.
+- [DuoSubs](https://github.com/CK-Explorer/DuoSubs), dont l'approche par phrases a inspiré
+  l'appariement des phrases coupées en deux.
+
+## Licence
+
+[MIT](LICENSE)

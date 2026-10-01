@@ -2,55 +2,168 @@
 
 # SemanticSubSync
 
-Re-times a subtitle (e.g. a downloaded French one) on a reference subtitle in another language
-(e.g. the original-language track embedded in the video) by matching lines **on meaning**, not on
-the shape of the timing and not on the audio.
+Fix the timing of a subtitle by comparing **what is said**, line by line, with a subtitle that is
+already in sync, even when the two are in different languages.
+
+```console
+$ semantic-subsync Movie.fr.srt Movie.mkv     # reference: the subtitle embedded in the video
+corrected -> Movie.fr.synced.srt (2 segment(s), largest shift +4.27 s) [reference: #3 eng English]
+```
+
+## Why this project exists
+
+Subtitles downloaded for a movie or an episode are often made for another release of the same
+video: another frame rate (23.976 vs 25 fps), a scene added or cut, a different intro. The
+result is a subtitle that drifts, or that is fine for 20 minutes and then off by 4 seconds.
+
+The usual tools align on the **audio** (ffsubsync, alass in audio mode) or on the **timing
+pattern** of another subtitle (alass, ffsubsync with a subtitle reference). In practice:
+
+- they fail on cuts and inserted scenes, the most common real-world case;
+- they **never say when they fail**: a subtitle moved by 200 seconds is reported as a success.
+
+Yet most videos already carry a perfectly timed subtitle: the embedded track, often in the
+original language. SemanticSubSync uses it as a reference and matches lines **by meaning**
+with a small multilingual sentence model: "Where did you put the keys?" and "Où as-tu mis les
+clés ?" are recognized as the same line. When too few lines match (wrong reference, commentary
+track, different cut), it **refuses** and leaves the file alone.
+
+## Scope
+
+**Good fit**
+- The video has an embedded **text** subtitle (SRT, ASS, WebVTT, mov_text), in any language.
+- Or you have another subtitle file that you know is in sync with your video.
+- The subtitle to fix is a regular `.srt`.
+
+**Not a fit**
+- No reference at all: this tool does not listen to the audio. Use ffsubsync or alass.
+- Bitmap-only embedded subtitles (PGS, VobSub): they would need OCR, which is out of scope.
+- A reference that comes from another release than your video (e.g. a downloaded English
+  subtitle): it has the same timing problems as the file you want to fix.
 
 ## How it works
 
-1. Every cue is cleaned (tags, SDH, speaker names) and embedded with a multilingual sentence model
-   (MiniLM, local and deterministic).
-2. Candidates: target cues, single or merged by two (a sentence split in two), are matched with
-   the 3 best reference cues, single or merged by two.
-3. A weighted longest increasing chain gives monotonic anchors; a neighbourhood filter drops
-   anchors whose offset disagrees with their neighbours.
-4. One global frame-rate drift is chosen among fixed ratios (23.976 / 24 / 25 / 29.97 / 30), then
-   the timeline is split into constant-offset segments (cuts, added or removed scenes).
+1. Every line is cleaned (tags, hearing-impaired annotations, speaker names) and turned into a
+   vector by a multilingual sentence model
+   ([paraphrase-multilingual-MiniLM-L12-v2](https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2),
+   run locally on CPU through [fastembed](https://github.com/qdrant/fastembed)).
+2. Each line, alone or merged with the next one (a sentence split in two), is compared with the
+   reference lines, alone or merged by two. The 3 best candidates above a similarity threshold
+   are kept.
+3. A weighted longest increasing chain keeps the candidates that respect the order of the
+   dialogue. Anchors whose offset disagrees with their neighbours are dropped.
+4. One frame-rate ratio is chosen for the whole file among the standard ones
+   (23.976 / 24 / 25 / 29.97 / 30). The timeline is then split into constant-offset segments,
+   which absorbs cuts and inserted scenes.
 5. Guards:
-   - coverage below 0.25: refused (the reference does not say the same thing, e.g. a commentary track);
-   - every correction below 0.5 s: the file is left untouched (natural bias between two languages);
-   - segments shorter than 60 s are local mismatches, not cuts.
+   - fewer than 25 % of lines anchored: **refused**, the reference does not say the same thing;
+   - every correction smaller than 0.5 s: the file is **left untouched** (this is the natural gap
+     between two languages, not a sync problem);
+   - segments shorter than 60 s are treated as local mismatches, not cuts.
+
+No AI service, no network access once the model is downloaded, and the same input always gives
+the same output.
+
+## Results
+
+Measured on 15 videos that carry both a French and an original-language embedded subtitle. The
+French track is distorted in 7 realistic ways (constant offset, frame-rate change in both
+directions, 3 cuts, inserted and removed scenes, cuts plus frame-rate change), then re-synced
+on the original-language track. A case passes when at least 95 % of lines start within 300 ms
+of their true position.
+
+| Tool (embedded subtitle as reference) | Cases passed | Gross failures (< 80 % of lines) |
+|---|---|---|
+| **SemanticSubSync** (0.7) | **104 / 105** | 1 |
+| alass | 84 / 105 | 10, none reported |
+
+On 11 invalid cases (a commentary track or a partial track taken as reference),
+SemanticSubSync refuses the ones where it would have done damage: the coverage of the
+anchored lines is 0.07 or less, against 0.32 to 0.82 on valid cases.
+
+For comparison, the audio-only tools on the same kind of distortions: ffsubsync 29 / 44,
+alass 24 / 44, subaligner 2 / 44, with no confidence signal on failures.
+
+Speed: about 85 s for a full movie on a 2-core Celeron J4025 NAS, 590 MB of RAM at peak, with
+the int8 model (see [Model](#model)).
+
+These numbers come from a personal library and are not a published benchmark. The test suite
+reproduces each distortion on synthetic dialogue (see [Development](#development)).
+
+## Installation
+
+Python 3.11 or later. ffmpeg / ffprobe are needed only when the reference is a video.
+
+```bash
+pip install "semantic-subsync[model] @ git+https://github.com/ludosch/SemanticSubSync"
+```
+
+The model (about 240 MB) is downloaded from Hugging Face on first use.
 
 ## Usage
 
 ```bash
-semantic-subsync target.fr.srt reference.en.srt output.srt     # JSON stats on stdout
+semantic-subsync SUBTITLE REFERENCE [-o OUTPUT] [--track INDEX] [--min-coverage X] [--json]
 ```
 
-### Worker
+- `REFERENCE` is a `.srt` in sync with the video, or the video itself. With a video, the
+  fullest embedded text subtitle is used, in any language, forced tracks excluded. `--track`
+  picks a stream by its ffprobe index instead.
+- The input subtitle is never modified. The result goes to `SUBTITLE.synced.srt` by default.
+- Already in sync: nothing is written.
+- Exit status: `0` corrected or already in sync, `1` refused, `2` error.
+- `--json` prints the decision and the statistics (coverage, segments, offsets).
 
-`semantic-subsync-worker run` processes the `/data/.semsync/queue` folder, fed by Bazarr's custom
-post-processing (`bazarr/enqueue.py`). For each downloaded subtitle it extracts the embedded text
-subtitles of the video (forced tracks excluded), takes the fullest one as reference, and writes
-`<video>.semsync.<lang>.srt` next to the video when a correction is needed. The downloaded file is
-never modified.
+From Python:
+
+```python
+from semantic_subsync import core, media
+
+status, cues, stats = core.resync(media.read_srt("Movie.fr.srt"), core.parse("Movie.en.srt"))
+if status == "corrected":
+    core.write("Movie.fr.synced.srt", cues)
+```
+
+## Integrations
+
+The engine knows nothing about media servers or subtitle managers. Integrations live in
+[`integrations/`](integrations):
+
+- [**Bazarr**](integrations/bazarr/README.md): each downloaded subtitle is checked automatically
+  by a background worker, and a corrected copy is written next to the video when needed.
+
+## Model
 
 | Variable | Meaning |
 |---|---|
-| `SEMSYNC_MODEL_DIR` | Local copy of the model (e.g. the int8-quantized one) |
-| `SEMSYNC_DIR` | Queue, failed jobs and log folder (default `/data/.semsync`) |
-| `SEMSYNC_CACHE` | Optional on-disk embedding cache |
+| `SEMSYNC_MODEL_DIR` | Folder of a local copy of the model, e.g. the int8 one made by [`tools/quantize_model.py`](tools/quantize_model.py): 112 MB, about 40 % faster on CPU and 2.5 times less RAM, same results in our tests |
+| `SEMSYNC_CACHE` | Optional folder where embeddings are cached on disk |
+
+The model is published by [sentence-transformers](https://www.sbert.net/) under the Apache 2.0
+license.
 
 ## Development
 
 ```bash
 mise x -- uv run pytest                                    # fast, no model needed
-SEMSYNC_TEST_MODEL=1 SEMSYNC_MODEL_DIR=/path/to/minilm-int8g \
-  mise x -- uv run --extra model pytest -m model           # end to end with the real model
+SEMSYNC_TEST_MODEL=1 mise x -- uv run --extra model pytest -m model   # end to end with the real model
 ```
 
-Unit tests run on **synthetic** dialogues (`tests/synth.py`). Each line carries a "concept" token
-such as `k17`, which a deterministic fake embedder turns into a fixed vector: the two languages of
-one concept score ~0.9, unrelated lines ~0.1. This tests the algorithm independently of the
-model, against every distortion of the benchmark: offset, frame rate, cuts, extra scenes, sentences
-split differently, repeated short replies, unrelated reference. No film extract is versioned.
+Unit tests run on **synthetic** dialogue (`tests/synth.py`). Each line carries a "concept"
+token such as `k17`, which a deterministic fake model turns into a fixed vector: the two
+languages of one concept score about 0.9, unrelated lines about 0.1, like the real model. This
+tests the algorithm independently of the model, against every distortion of the benchmark. No
+film extract is stored in the repository.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) and the [changelog](CHANGELOG.md).
+
+## Acknowledgements
+
+- [ffsubsync](https://github.com/smacke/ffsubsync) and [alass](https://github.com/kaegi/alass),
+  the reference tools this project was measured against.
+- [DuoSubs](https://github.com/CK-Explorer/DuoSubs), whose sentence-level approach inspired the
+  matching of split sentences.
+
+## License
+
+[MIT](LICENSE)

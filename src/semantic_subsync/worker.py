@@ -1,28 +1,25 @@
 #!/usr/bin/env python3
-"""semsync worker: re-times downloaded subtitles on a subtitle embedded in the video.
+"""Queue worker: re-times subtitles that land next to videos, on a subtitle embedded in the video.
 
-Bazarr (custom post-processing) drops one job per downloaded subtitle into /data/.semsync/queue
-(see enqueue.py). For each job the worker:
+Any program can feed it: a job is a small JSON file {"video": ..., "sub": ...} dropped into
+$SEMSYNC_DIR/queue (see integrations/bazarr/enqueue.py for Bazarr). For each job the worker:
   1. extracts the embedded TEXT subtitles of the video (forced tracks excluded) and keeps the
      fullest one as reference (any language: an embedded subtitle is assumed to be in sync);
-  2. runs semsync (semantic alignment) of the downloaded subtitle onto that reference;
+  2. aligns the subtitle on that reference by meaning (core.resync);
   3. writes '<video>.semsync.<lang...>.srt' next to the original when a correction is needed.
-     The downloaded subtitle itself is never modified. A stale .semsync file is removed when
-     the new subtitle needs no correction or cannot be checked.
+     The subtitle itself is never modified. A stale .semsync file is removed when the new
+     subtitle needs no correction or cannot be checked.
 
-Usage: worker.py run                 process the queue forever
-       worker.py one VIDEO SUBTITLE  process one pair now (test)
-       worker.py backfill [ROOT]     enqueue every existing external .srt under ROOT (/data/media)
+Usage: semantic-subsync-worker run                 process the queue forever
+       semantic-subsync-worker one VIDEO SUBTITLE  process one pair now
+       semantic-subsync-worker backfill [ROOT]     enqueue every external .srt next to its video under ROOT
 """
-import gc, json, os, subprocess, sys, tempfile, time, traceback
-from semantic_subsync import core as semsync
+import gc, json, os, sys, time, traceback
+from semantic_subsync import core, media
 
 BASE = os.environ.get("SEMSYNC_DIR", "/data/.semsync")
 QUEUE, FAILED = f"{BASE}/queue", f"{BASE}/failed"
 LOG = f"{BASE}/semsync.log"
-TEXT_CODECS = {"subrip", "ass", "ssa", "mov_text", "webvtt", "text"}
-VIDEO_EXT = (".mkv", ".mp4", ".m4v", ".avi", ".mov", ".ts", ".webm")
-MIN_COVERAGE = 0.25        # below: the reference does not say the same thing -> leave untouched
 POLL = 30
 
 
@@ -42,40 +39,6 @@ def side_path(video, sub):
     return os.path.splitext(sub)[0] + ".semsync.srt"
 
 
-def read_srt(path):
-    """semsync.parse, but downloaded subtitles are sometimes cp1252 rather than UTF-8."""
-    raw = open(path, "rb").read()
-    for enc in ("utf-8-sig", "cp1252"):
-        try:
-            return semsync.parse_text(raw.decode(enc))
-        except UnicodeDecodeError:
-            continue
-    return semsync.parse_text(raw.decode("utf-8", errors="replace"))
-
-
-def references(video, workdir):
-    """Extract every non-forced embedded text subtitle in ONE read of the file; return [(cues, desc)]."""
-    probe = subprocess.run(["ffprobe", "-v", "error", "-show_entries",
-                            "stream=index,codec_name,codec_type:stream_tags=language,title:stream_disposition=forced",
-                            "-of", "json", video], capture_output=True, text=True, timeout=300)
-    streams = json.loads(probe.stdout or "{}").get("streams", [])
-    subs = [s for s in streams if s.get("codec_type") == "subtitle" and s.get("codec_name") in TEXT_CODECS
-            and not s.get("disposition", {}).get("forced")]
-    if not subs:
-        return []
-    cmd = ["ffmpeg", "-nostdin", "-v", "error", "-y", "-i", video]
-    for s in subs:
-        cmd += ["-map", f"0:{s['index']}", "-f", "srt", f"{workdir}/{s['index']}.srt"]
-    subprocess.run(cmd, capture_output=True, timeout=1800)
-    out = []
-    for s in subs:
-        p = f"{workdir}/{s['index']}.srt"
-        if os.path.exists(p) and os.path.getsize(p) > 0:
-            tags = s.get("tags", {})
-            out.append((semsync.parse(p), f"#{s['index']} {tags.get('language', 'und')} {tags.get('title', '')}".strip()))
-    return out
-
-
 def process(video, sub, origin="manual"):
     t0 = time.time()
     rec = {"origin": origin, "video": video, "sub": sub}
@@ -88,22 +51,19 @@ def process(video, sub, origin="manual"):
             os.remove(side); extra["removed_stale"] = side
         log({**rec, "status": status, "secs": round(time.time() - t0, 1), **extra})
 
-    with tempfile.TemporaryDirectory() as wd:
-        refs = references(video, wd)
-    refs = [r for r in refs if len(r[0]) >= 20]
-    if not refs:
+    found = media.best_reference(video)
+    if found is None:
         return drop_stale("no_reference")
-    ref, ref_desc = max(refs, key=lambda r: len(r[0]))      # fullest embedded track
-    tgt = read_srt(sub)
-    out, st = semsync.sync(tgt, ref)
+    ref, ref_desc = found
+    status, out, st = core.resync(media.read_srt(sub), ref)
     info = {"reference": ref_desc, "coverage": st.get("coverage"), "segments": st.get("segments"),
             "max_abs_offset": st.get("max_abs_offset")}
-    if out is None or (st.get("coverage") or 0) < MIN_COVERAGE:
+    if status == "refused":
         return drop_stale("refused", **info, why=st.get("status"))
-    if all(abs(a[0] - b[0]) < 1e-6 and abs(a[1] - b[1]) < 1e-6 for a, b in zip(out, tgt)):
+    if status == "in_sync":
         return drop_stale("in_sync", **info)
     tmp = side + ".tmp"
-    semsync.write(tmp, out)
+    core.write(tmp, out)
     os.chmod(tmp, 0o664)
     os.replace(tmp, side)
     log({**rec, "status": "corrected", "output": side, "secs": round(time.time() - t0, 1), **info,
@@ -113,8 +73,8 @@ def process(video, sub, origin="manual"):
 
 def unload_model():
     """The model takes ~0.5 GB: free it while the queue is empty."""
-    if semsync._model is not None:
-        semsync._model = None; semsync._cache.clear(); gc.collect()
+    if core._model is not None:
+        core._model = None; core._cache.clear(); gc.collect()
 
 
 def run():
@@ -138,7 +98,7 @@ def backfill(root):
     """Queue every existing external .srt that sits next to its video (same file name stem)."""
     os.makedirs(QUEUE, exist_ok=True); n = 0
     for d, _, files in os.walk(root):
-        videos = [f for f in files if f.lower().endswith(VIDEO_EXT)]
+        videos = [f for f in files if f.lower().endswith(media.VIDEO_EXT)]
         for f in files:
             if not f.lower().endswith(".srt") or ".semsync." in f:
                 continue

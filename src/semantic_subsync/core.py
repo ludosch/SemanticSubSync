@@ -8,9 +8,9 @@ language (e.g. the original EN) by matching cues on MEANING, not on timing shape
 4. drop anchors whose offset disagrees with their neighbours (robust local median)
 5. every target cue gets the smoothed offset of its anchor neighbourhood
 
-Usage: semantic-subsync target.srt reference.srt output.srt
+Command line: see cli.py.
 """
-import json, re, sys, bisect
+import re, bisect
 import numpy as np
 
 MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
@@ -274,16 +274,16 @@ def segment(at, ao, p, jump=0.8, confirm=6):
         segs.append({"t0": float(t[0]), "t1": float(t[-1]), "n": int(s1 - s0), "a": a, "b": b, "resid": r})
     return segs
 
-def main(argv=None):
-    argv = sys.argv[1:] if argv is None else argv
-    if len(argv) != 3:
-        sys.exit(__doc__)
-    out, st = sync(parse(argv[0]), parse(argv[1]))
-    if out is not None:
-        write(argv[2], out)
-    print(json.dumps(st, ensure_ascii=False))
-    return 0 if out is not None else 1
+MIN_COVERAGE = 0.25    # share of target cues anchored; below it the reference does not say the same thing
 
 
-if __name__ == "__main__":
-    sys.exit(main())
+def resync(tgt, ref, p=P, embed_fn=None, min_coverage=MIN_COVERAGE):
+    """`sync` plus the decision. Returns (status, cues, stats), status being one of
+    "corrected" (cues = re-timed target), "in_sync" (cues = None: nothing to change) or
+    "refused" (cues = None: the reference cannot be trusted for this target)."""
+    out, st = sync(tgt, ref, p, embed_fn)
+    if out is None or (st.get("coverage") or 0) < min_coverage:
+        return "refused", None, st
+    if all(abs(a[0] - b[0]) < 1e-6 and abs(a[1] - b[1]) < 1e-6 for a, b in zip(out, tgt)):
+        return "in_sync", None, st
+    return "corrected", out, st
