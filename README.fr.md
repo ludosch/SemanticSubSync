@@ -17,14 +17,13 @@ référence calé sur la vidéo.
 
 | Outil | Scène absente + 25 i/s | Scène en trop | Mauvaise référence (piste commentaire) |
 |---|---|---|---|
-| alass 2.0.0 | ✅ 100 % | ❌ 87 %, jusqu'à 17 s d'écart | ❌ réécrit le fichier au lieu de refuser (répliques déplacées de 96 s au plus ici) |
-| ffsubsync 0.5.1 (avec ou sans `--split-penalty`) | ❌ 52 %, 70 à 81 s d'écart | ❌ 52 %, 61 à 70 s d'écart | ❌ réécrit le fichier au lieu de refuser (répliques déplacées de 36 à 96 s au plus ici) |
-| LAPSE 2.2.3 | ❌ 52 %, 70 s d'écart, se dit « solid » | ❌ 52 %, 70 s d'écart, se dit « solid » | ❌ réécrit le fichier et se dit « solid » (répliques déplacées de 75 s au plus ici) |
-| **SemanticSubSync** | ✅ **100 %** | ✅ **100 %** | ✅ **refuse, fichier intact** |
+| alass 2.0.0 | ✅ synchronisé | ❌ une partie du fichier décalée | ❌ réécrit le fichier au lieu de refuser |
+| ffsubsync 0.5.1 (avec ou sans `--split-penalty`) | ❌ la moitié du fichier décalée | ❌ la moitié du fichier décalée | ❌ réécrit le fichier au lieu de refuser |
+| LAPSE 2.2.3 | ❌ la moitié du fichier décalée, se dit « solid » | ❌ la moitié du fichier décalée, se dit « solid » | ❌ réécrit le fichier et se dit « solid » |
+| **SemanticSubSync** | ✅ **synchronisé** | ✅ **synchronisé** | ✅ **refuse, fichier intact** |
 
-Part des répliques qui finissent à moins de 300 ms de leur vraie position, sur cet exemple
-seulement : les chiffres décrivent ces fichiers, pas toutes les vidéos. Les détails et les
-scripts pour le rejouer sont dans le dossier de l'exemple.
+Cela ne décrit que ces fichiers, pas toutes les vidéos. Les chiffres, les détails et les scripts
+pour le rejouer sont dans le dossier de l'exemple.
 
 ## Pourquoi ce projet existe
 

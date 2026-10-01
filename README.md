@@ -16,14 +16,13 @@ subtitle files given to each tool, with a reference subtitle that is in sync wit
 
 | Tool | Scene missing + 25 fps | Extra scene | Wrong reference (commentary track) |
 |---|---|---|---|
-| alass 2.0.0 | ✅ 100 % | ❌ 87 %, up to 17 s off | ❌ rewrites the file instead of refusing (lines moved up to 96 s here) |
-| ffsubsync 0.5.1 (with or without `--split-penalty`) | ❌ 52 %, 70-81 s off | ❌ 52 %, 61-70 s off | ❌ rewrites the file instead of refusing (lines moved up to 36-96 s here) |
-| LAPSE 2.2.3 | ❌ 52 %, 70 s off, says "solid" | ❌ 52 %, 70 s off, says "solid" | ❌ rewrites the file and says "solid" (lines moved up to 75 s here) |
-| **SemanticSubSync** | ✅ **100 %** | ✅ **100 %** | ✅ **refuses, file left alone** |
+| alass 2.0.0 | ✅ in sync | ❌ part of the file off | ❌ rewrites the file instead of refusing |
+| ffsubsync 0.5.1 (with or without `--split-penalty`) | ❌ half of the file off | ❌ half of the file off | ❌ rewrites the file instead of refusing |
+| LAPSE 2.2.3 | ❌ half of the file off, says "solid" | ❌ half of the file off, says "solid" | ❌ rewrites the file and says "solid" |
+| **SemanticSubSync** | ✅ **in sync** | ✅ **in sync** | ✅ **refuses, file left alone** |
 
-Share of lines that end up within 300 ms of their true position, on this example only: the
-figures describe these files, not every video. Details and scripts to rerun it are in the
-example folder.
+This describes these files only, not every video. Figures, details and scripts to rerun it are
+in the example folder.
 
 ## Why this project exists
 
