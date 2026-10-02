@@ -1,0 +1,15 @@
+name: "SemanticSubSync"
+guid: "32462154-51a5-4097-ac51-e453bb9dd38d"
+version: "0.12.0.0"
+targetAbi: "12.1.0.0"
+framework: "net10.0"
+overview: "Re-times downloaded subtitles on the subtitle embedded in the video, by meaning."
+description: >
+  Re-times the external subtitles of movies and episodes on the text subtitle embedded in
+  the video, by matching lines on meaning with a small multilingual sentence model. Handles
+  offsets, frame-rate changes and cuts; leaves the file alone when unsure. The engine is
+  installed in the plugin's data folder on first use. Needs write access to the media folders.
+category: "Metadata"
+owner: "ludosch"
+artifacts:
+- "Jellyfin.Plugin.SemanticSubSync.dll"

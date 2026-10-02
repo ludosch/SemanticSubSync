@@ -319,6 +319,10 @@ dans [`integrations/`](integrations) :
 - [**Bazarr**](integrations/bazarr/README.md) (en anglais) : chaque sous-titre téléchargé est
   vérifié automatiquement par un worker en arrière-plan et corrigé si besoin. La version
   téléchargée reste disponible comme piste supplémentaire, et chaque décision est journalisée.
+- [**Jellyfin**](integrations/jellyfin/README.md) (en anglais) : un plugin qui installe lui-même le
+  moteur, resynchronise les sous-titres des nouvelles vidéos et les nouveaux fichiers de
+  sous-titres, puis rafraîchit l'élément pour que les pistes apparaissent tout de suite. Pas de
+  conteneur en plus ; Jellyfin doit pouvoir écrire dans les dossiers des médias.
 
 ## Modèle
 

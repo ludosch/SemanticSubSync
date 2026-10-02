@@ -22,6 +22,8 @@ Changelog = "https://github.com/ludosch/SemanticSubSync/blob/main/CHANGELOG.md"
 [project.optional-dependencies]
 # The sentence models. Not needed by the unit tests, which use a deterministic fake embedder.
 model = ["fastembed>=0.8", "tokenizers>=0.20", "huggingface-hub>=0.24"]
+# The static model only (no transformer runtime): what the Jellyfin plugin installs.
+static = ["tokenizers>=0.20", "huggingface-hub>=0.24"]
 
 [project.scripts]
 semantic-subsync = "semantic_subsync.cli:main"

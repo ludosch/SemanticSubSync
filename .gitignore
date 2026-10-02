@@ -10,3 +10,8 @@ build/
 !examples/**/*.srt
 examples/**/out.*.srt
 examples/**/*.synced.srt
+
+# Jellyfin plugin build output
+integrations/jellyfin/**/bin/
+integrations/jellyfin/**/obj/
+integrations/jellyfin/artifacts/

@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>SemanticSubSync</title>
+</head>
+<body>
+    <div id="SemanticSubSyncConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-select,emby-checkbox">
+        <div data-role="content">
+            <div class="content-primary">
+                <form id="SemanticSubSyncConfigForm">
+                    <p>Re-times the external <code>.srt</code> subtitles of movies and episodes on the subtitle
+                        embedded in the video, by matching lines on meaning. When too few lines match, the file is
+                        left alone. Runs when a video is added and with the scheduled task
+                        <em>Re-time new subtitles</em> (Dashboard &gt; Scheduled Tasks).</p>
+                    <p>The engine (about 500 MB with its model) is installed in the plugin's data folder on first
+                        use. Jellyfin needs write access to the media folders.</p>
+                    <div class="checkboxContainer">
+                        <label class="emby-checkbox-label">
+                            <input id="Enabled" type="checkbox" is="emby-checkbox" />
+                            <span>Enabled</span>
+                        </label>
+                    </div>
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label class="emby-checkbox-label">
+                            <input id="ProcessExisting" type="checkbox" is="emby-checkbox" />
+                            <span>Also process the subtitles already in the library</span>
+                        </label>
+                        <div class="fieldDescription checkboxFieldDescription">Applies to the first run only. Off: the
+                            subtitles already there are left as they are, and only the ones added later are processed.
+                            On a large library and a small server, processing everything can take hours.</div>
+                    </div>
+                    <div class="selectContainer">
+                        <label class="selectLabel" for="OutputMode">Correction</label>
+                        <select is="emby-select" id="OutputMode" class="emby-select-withcolor emby-select">
+                            <option value="replace">Replace the subtitle, keep the download as "replaced"</option>
+                            <option value="side">Add it next to the download, as "resync"</option>
+                        </select>
+                    </div>
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="EngineSource">Engine source (advanced)</label>
+                        <input id="EngineSource" type="text" is="emby-input" />
+                        <div class="fieldDescription">Leave empty for the release this plugin was built for. A wheel
+                            path or URL installs that build instead.</div>
+                    </div>
+                    <div>
+                        <button is="emby-button" type="submit" class="raised button-submit block emby-button">
+                            <span>Save</span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        <script type="text/javascript">
+            var SemanticSubSyncConfig = { pluginUniqueId: '32462154-51a5-4097-ac51-e453bb9dd38d' };
+
+            document.querySelector('#SemanticSubSyncConfigPage').addEventListener('pageshow', function () {
+                Dashboard.showLoadingMsg();
+                ApiClient.getPluginConfiguration(SemanticSubSyncConfig.pluginUniqueId).then(function (config) {
+                    document.querySelector('#Enabled').checked = config.Enabled;
+                    document.querySelector('#ProcessExisting').checked = config.ProcessExisting;
+                    document.querySelector('#OutputMode').value = config.OutputMode;
+                    document.querySelector('#EngineSource').value = config.EngineSource || '';
+                    Dashboard.hideLoadingMsg();
+                });
+            });
+
+            document.querySelector('#SemanticSubSyncConfigForm').addEventListener('submit', function (e) {
+                Dashboard.showLoadingMsg();
+                ApiClient.getPluginConfiguration(SemanticSubSyncConfig.pluginUniqueId).then(function (config) {
+                    config.Enabled = document.querySelector('#Enabled').checked;
+                    config.ProcessExisting = document.querySelector('#ProcessExisting').checked;
+                    config.OutputMode = document.querySelector('#OutputMode').value;
+                    config.EngineSource = document.querySelector('#EngineSource').value.trim();
+                    ApiClient.updatePluginConfiguration(SemanticSubSyncConfig.pluginUniqueId, config).then(function (result) {
+                        Dashboard.processPluginConfigurationUpdateResult(result);
+                    });
+                });
+                e.preventDefault();
+                return false;
+            });
+        </script>
+    </div>
+</body>
+</html>

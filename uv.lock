@@ -982,6 +982,10 @@ model = [
     { name = "huggingface-hub" },
     { name = "tokenizers" },
 ]
+static = [
+    { name = "huggingface-hub" },
+    { name = "tokenizers" },
+]
 
 [package.dev-dependencies]
 dev = [
@@ -993,10 +997,12 @@ requires-dist = [
     { name = "charset-normalizer", specifier = ">=3" },
     { name = "fastembed", marker = "extra == 'model'", specifier = ">=0.8" },
     { name = "huggingface-hub", marker = "extra == 'model'", specifier = ">=0.24" },
+    { name = "huggingface-hub", marker = "extra == 'static'", specifier = ">=0.24" },
     { name = "numpy", specifier = ">=2" },
     { name = "tokenizers", marker = "extra == 'model'", specifier = ">=0.20" },
+    { name = "tokenizers", marker = "extra == 'static'", specifier = ">=0.20" },
 ]
-provides-extras = ["model"]
+provides-extras = ["model", "static"]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest", specifier = ">=8" }]

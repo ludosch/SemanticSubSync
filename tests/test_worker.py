@@ -497,3 +497,15 @@ def test_bazarr_enqueue_is_atomic_and_standalone(tmp_path):
     assert len(files) == 1 and files[0].endswith(".job")
     job = json.loads((tmp_path / "queue" / files[0]).read_text(encoding="utf-8"))
     assert job == {"video": "/data/v é.mkv", "sub": "/data/v é.fr.srt", "score": "87.5", "origin": "bazarr"}
+
+
+def test_one_prints_its_decision_as_the_last_stdout_line(env, monkeypatch, capsys):
+    """What the Jellyfin plugin reads: `worker one VIDEO SUB` ends with one JSON line on stdout.
+    It also runs where os.nice does not exist (Windows)."""
+    monkeypatch.delattr(os, "nice", raising=False)
+    monkeypatch.setattr(worker, "BASE", str(env["tmp"]))
+    write_late(env)
+    monkeypatch.setattr(sys, "argv", ["semantic-subsync-worker", "one", env["video"], env["sub"]])
+    worker.main()
+    rec = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert rec["status"] == "corrected" and rec["sub"] == env["sub"] and rec["output_path"] == env["sub"]

@@ -305,7 +305,8 @@ def history(terms):
 
 
 def main():
-    os.nice(19)                     # Jellyfin keeps priority on the CPU
+    if hasattr(os, "nice"):         # POSIX only
+        os.nice(19)                 # Jellyfin keeps priority on the CPU
     args = sys.argv[1:] or ["run"]
     cmd, rest = args[0], args[1:]
     if cmd == "run":
