@@ -15,9 +15,10 @@ public class PluginConfiguration : BasePluginConfiguration
     /// afterwards are processed (a large library can take hours on a small server).</summary>
     public bool ProcessExisting { get; set; }
 
-    /// <summary>Gets or sets where a correction goes: "replace" (the correction takes the subtitle's
-    /// name, the download is kept as .replaced.) or "side" (written as .resync., download untouched).</summary>
-    public string OutputMode { get; set; } = "replace";
+    /// <summary>Gets or sets where a correction goes: "side" (written as .resync.default., played by default,
+    /// the download untouched) or "replace" (the correction takes the subtitle's name, the download is
+    /// kept as .replaced.).</summary>
+    public string OutputMode { get; set; } = "side";
 
     /// <summary>Gets or sets an optional engine to install instead of the release this plugin was built
     /// for: a wheel path or URL (for testing a development build). Empty = the official release.</summary>

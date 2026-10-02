@@ -30,8 +30,9 @@ the track. With the default output mode:
 | `Movie.replaced.fr.srt` | replaced - French - SUBRIP - External |
 
 If a correction is wrong, pick the "replaced" track. `SEMSYNC_OUTPUT=side` keeps the download
-under its own name instead and writes the correction as `Movie.resync.fr.srt` ("resync -
-French"). A media server may only see a new file after its next library scan.
+under its own name instead and writes the correction as `Movie.resync.fr.default.srt` ("resync -
+French - Default"): the "default" flag makes Jellyfin play the correction first. A media server
+may only see a new file after its next library scan.
 
 When Bazarr downloads a new subtitle over a corrected one (an upgrade, a manual search), the
 new file is checked again and the old `.replaced` file is replaced or removed. When a subtitle

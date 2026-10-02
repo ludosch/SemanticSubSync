@@ -14,6 +14,8 @@ All notable changes to this project are documented here. The format follows
   (none by default); never while someone is watching; then refreshes the item so the tracks show
   without a library scan. "Sync subtitles" in the menu of a movie or an episode runs it at once.
   The subtitles already in a library when it is chosen are left alone unless asked.
+  By default the download is never modified: the correction is written next to it and played by
+  default (replacing the subtitle is an option).
   The engine and its model (about 410 MB) are installed in the background a few minutes after
   Jellyfin starts, one installation at a time (a sync started meanwhile waits for it); the plugin
   page shows whether the engine is ready.
@@ -23,6 +25,9 @@ All notable changes to this project are documented here. The format follows
   for it.
 
 ### Changed
+- Worker, `side` output: the correction is `<video>.resync.<lang...>.default.srt`; the "default"
+  flag makes Jellyfin play it rather than the download (a forced subtitle's correction is not
+  flagged).
 - The `static` model is downloaded as its official float16 export (`onnx/model_fp16.onnx`, at a
   fixed revision of the model repository): about 220 MB instead of 434 MB, and half the memory for
   its table. Same decisions as the float32 file on the benchmark and the real-world datasets.
@@ -32,6 +37,8 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 - Worker: runs where `os.nice` does not exist (Windows) instead of failing at start.
+- Worker: a correction that was deleted, edited or renamed is written again; it used to be
+  reported as `unchanged` and stay missing.
 
 ## [0.11.0] - 2026-10-02
 

@@ -13,7 +13,9 @@ $SEMSYNC_DIR/queue (see integrations/bazarr/enqueue.py for Bazarr). For each job
      replace (default)  the correction takes the subtitle's name and the downloaded subtitle is
                         kept as '<video>.replaced.<lang...>.srt': Jellyfin shows it as an extra
                         track titled "Replaced", to switch back to if the correction is wrong;
-     side               the subtitle is left as is, the correction is '<video>.resync.<lang...>.srt'.
+     side               the subtitle is left as is, the correction is '<video>.resync.<lang...>.default.srt':
+                        Jellyfin shows it as a track titled "Resync" and picks it by default (a forced
+                        subtitle's correction gets no "default" flag).
      When no correction is needed (any more), the downloaded subtitle gets its name back and the
      extra file is removed.
 The sentence model is SEMSYNC_MODEL (static by default, or minilm). A model chosen by hand for one
@@ -83,7 +85,14 @@ def tagged_path(video, sub, tag):
 
 
 def side_path(video, sub):
-    return tagged_path(video, sub, RESYNC)
+    """'Show - S01E01.fr.srt' -> 'Show - S01E01.resync.fr.default.srt': the "default" flag makes Jellyfin
+    pick the correction over the download, which keeps its name. A forced subtitle gets no flag: it
+    would be chosen over the full subtitles."""
+    path = tagged_path(video, sub, RESYNC)
+    toks = os.path.basename(path).lower().split(".")[1:-1]
+    if "forced" in toks or "default" in toks:
+        return path
+    return os.path.splitext(path)[0] + ".default.srt"
 
 
 def is_own(path):
@@ -132,8 +141,16 @@ def process(video, sub, origin="manual", force=False, score=None, state=None, mo
             state.close()
 
 
+def kept_output(row, sub, side):
+    """The correction recorded for this subtitle is still there, unmodified, under the name this
+    version writes: otherwise the subtitle is processed again (a deleted or renamed correction is
+    written back)."""
+    out = row["output_path"]
+    return out is None or (out in (sub, side) and os.path.isfile(out) and sha256(out) == row["output_sha256"])
+
+
 def _process(video, sub, rec, t0, force, score, state, model):
-    replaced, side = tagged_path(video, sub, REPLACED), tagged_path(video, sub, RESYNC)
+    replaced, side = tagged_path(video, sub, REPLACED), side_path(video, sub)
     row = state.get(sub)
     choice = (row or {}).get("model_choice") if model is None else (None if model == "default" else model)
     use = choice or core.DEFAULT_MODEL
@@ -147,7 +164,8 @@ def _process(video, sub, rec, t0, force, score, state, model):
     if (not force and row and row["status"] != "error" and row["input_sha256"] == src_sha
             and (row["video_size"], row["video_mtime"]) == (vsize, vmtime) and row["output_mode"] == OUTPUT
             and (model is None or (row["model"], row["model_choice"]) == (use, choice))
-            and cur in (row["input_sha256"], row["output_sha256"])):
+            and cur in (row["input_sha256"], row["output_sha256"])
+            and kept_output(row, sub, side)):
         return log({**rec, "status": "unchanged", "last": row["status"], "processed_at": row["processed_at"]})
 
     lang, kind = media.language_key(media.language_of(sub)), media.kind_of(sub)

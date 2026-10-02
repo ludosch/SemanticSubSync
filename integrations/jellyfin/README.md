@@ -7,8 +7,9 @@ match the embedded subtitle, the file is left alone.
 ```
 new video, or new / changed .srt ──> plugin ──> semantic-subsync-worker one VIDEO SUB
                                                         │
-                       Movie.fr.srt           corrected (keeps its name)
-                       Movie.replaced.fr.srt  the download, kept only when a correction was made
+                       Movie.fr.srt                 the download, never modified
+                       Movie.resync.fr.default.srt  the correction, played by default (only when
+                                                    one was needed)
                                                         │
                                    item refreshed: Jellyfin shows the tracks at once
 ```
@@ -68,8 +69,9 @@ Dashboard > Plugins > SemanticSubSync:
 
 - **Automatic in these libraries**: none by default.
 - **Also process the subtitles already in a library when it is chosen.**
-- **Correction**: replace the subtitle and keep the download as `replaced` (default), or add the
-  correction next to the download as `resync`.
+- **Correction**: add the correction next to the download as `resync`, flagged so that Jellyfin
+  plays it by default (default: the download is never modified), or replace the subtitle and keep
+  the download as `replaced`.
 - **Engine source** (advanced): a wheel path or URL to install instead of the release the plugin
   was built for, e.g. `file:///config/semantic_subsync-0.12.0-py3-none-any.whl`.
 

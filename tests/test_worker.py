@@ -311,7 +311,7 @@ def test_side_mode_writes_resync_and_keeps_the_download(env, monkeypatch):
     before = write_late(env)
     worker.process(env["video"], env["sub"])
     side = Path(worker.side_path(env["video"], env["sub"]))
-    assert side.name == "Show - S01E01.resync.fr.srt"
+    assert side.name == "Show - S01E01.resync.fr.default.srt"
     assert Path(env["sub"]).read_bytes() == before and side.exists() and not replaced_of(env).exists()
     core.write(env["sub"], tgt_cues(env["base"]))                       # new download, in sync
     worker.process(env["video"], env["sub"])
@@ -520,3 +520,31 @@ def test_prepare_loads_the_default_model_and_prints_ready(monkeypatch, capsys):
     worker.main()
     rec = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
     assert rec["status"] == "ready" and seen == [worker.core.DEFAULT_MODEL] == [rec["model"]]
+
+
+@pytest.mark.parametrize("sub,expected", [
+    ("Show.fr.srt", "Show.resync.fr.default.srt"),
+    ("Show.fr.hi.srt", "Show.resync.fr.hi.default.srt"),
+    ("Show.fr.forced.srt", "Show.resync.fr.forced.srt"),          # would be picked over the full subtitles
+    ("Show.fr.default.srt", "Show.resync.fr.default.srt"),         # flagged once
+    ("Other.fr.srt", "Other.fr.resync.default.srt"),
+])
+def test_side_path_flags_the_correction_as_default(sub, expected):
+    assert worker.side_path("/m/Show.mkv", "/m/" + sub) == "/m/" + expected
+    assert worker.is_own("/m/" + expected)
+
+
+def test_a_deleted_or_edited_correction_is_written_again(env, monkeypatch):
+    monkeypatch.setattr(worker, "OUTPUT", "side")
+    write_late(env)
+    worker.process(env["video"], env["sub"])
+    side = Path(worker.side_path(env["video"], env["sub"]))
+    good = side.read_bytes()
+    worker.process(env["video"], env["sub"])
+    assert last_log(env)["status"] == "unchanged"
+    side.unlink()
+    worker.process(env["video"], env["sub"])
+    assert last_log(env)["status"] == "corrected" and side.read_bytes() == good
+    side.write_bytes(b"edited by hand")
+    worker.process(env["video"], env["sub"])
+    assert last_log(env)["status"] == "corrected" and side.read_bytes() == good
