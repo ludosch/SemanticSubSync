@@ -20,6 +20,7 @@ FIELDS = {
     "segments": "constant-offset segments found",
     "max_abs_offset": "largest shift applied, in seconds",
     "dropped": "lines left out (scenes or a recap the video lacks)",
+    "seg": "the correction per segment, JSON: from / to (s), offset (s), drift_ppm",
     "input_sha256": "hash of the downloaded subtitle that was synced",
     "input_size": "its size in bytes",
     "output_mode": "replace or side",
@@ -74,8 +75,9 @@ class State:
         row = {c: rec.get(c) for c in FIELDS}
         row["runs"] = (old.get("runs") or 0) + 1
         row["processed_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
-        if isinstance(row["settings"], dict):
-            row["settings"] = json.dumps(row["settings"], sort_keys=True)
+        for k in ("settings", "seg"):
+            if isinstance(row[k], (dict, list)):
+                row[k] = json.dumps(row[k], sort_keys=True)
         self.db.execute(f"INSERT OR REPLACE INTO subtitles ({', '.join(row)}) VALUES ({', '.join('?' * len(row))})",
                         list(row.values()))
         self.db.commit()

@@ -109,6 +109,7 @@ and add `SEMSYNC_MODEL_DIR=/models/minilm-int8`.
 |---|---|---|
 | `SEMSYNC_OUTPUT` | `replace` | `replace`: the correction takes the subtitle's name, the download is kept as `.replaced`. `side`: the download is left as is, the correction is written as `.resync` |
 | `SEMSYNC_EXTRA_LINES` | `drop` | Lines the video has no room for (a translator credit, a recap or a scene that your video lacks) are removed. `keep` leaves them where nothing is shown nor said, a block of consecutive lines whole or not at all |
+| `SEMSYNC_LOG_MAX_MB` | `10` | Size limit of the log; its oldest entries are deleted beyond it (see [Logs](#logs)). `0`: no limit |
 
 The worker runs at the lowest CPU priority (`nice 19`), so a media server transcoding at the
 same time keeps priority. It unloads the model when the queue is empty.
@@ -125,7 +126,18 @@ docker exec semantic-subsync semantic-subsync-worker backfill /data/media
 
 ## Logs
 
-One JSON line per job in `/data/.semsync/semsync.log`:
+`/data/.semsync/semsync.log` is the history of every decision: one JSON line per job, plus one
+when the worker starts (version, output mode, settings, model).
+
+Each job line holds:
+
+- the paths, language and kind of the subtitle;
+- the decision (`status`, below) and why (`reason`, `reference`, `coverage`);
+- the correction: `segments`, `max_abs_offset`, `dropped` lines, and `seg`, the offset applied
+  in each segment (from / to in seconds, offset, frame-rate drift in ppm);
+- the hashes of the synced subtitle and of the correction (`input_sha256`, `output_sha256`), to
+  tell which exact file was processed;
+- the engine version and settings, the processing time and the files removed.
 
 | `status` | Meaning |
 |---|---|
@@ -136,7 +148,17 @@ One JSON line per job in `/data/.semsync/semsync.log`:
 | `redundant` | The video embeds a text subtitle of the same language and kind |
 | `unchanged` | Already processed, nothing changed since |
 | `skipped` | Missing file, not an `.srt`, or one of our own files (`.replaced`, `.resync`) |
-| `error` | Unexpected failure; the job is moved to `/data/.semsync/failed` |
+| `error` | Unexpected failure, with the end of the traceback; the job is moved to `/data/.semsync/failed` |
+
+Everything logged about one episode or movie, oldest first, in a readable form:
+
+```bash
+docker exec semantic-subsync semantic-subsync-worker history "S04E02"
+```
+
+The log never grows past `SEMSYNC_LOG_MAX_MB` (default 10, several thousand jobs): beyond it, the
+oldest entries are deleted and the newest half is kept. No archive copy is made. `0` turns the
+limit off.
 
 ## State
 

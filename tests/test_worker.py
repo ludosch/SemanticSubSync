@@ -372,6 +372,52 @@ def test_state_records_every_field(env):
     assert json.loads(r["settings"])["extra_lines"] == "drop" and r["score"] == "87.5"
 
 
+# --- log ---------------------------------------------------------------------------------------
+
+def test_log_of_a_correction_has_segments_hashes_and_settings(env):
+    write_late(env)
+    worker.process(env["video"], env["sub"])
+    rec = last_log(env)
+    assert rec["seg"] and all(abs(s["offset"] + 10) < 0.1 for s in rec["seg"])
+    assert set(rec["seg"][0]) == {"from", "to", "offset", "drift_ppm"}
+    assert len(rec["input_sha256"]) == len(rec["output_sha256"]) == 64
+    assert rec["input_sha256"] != rec["output_sha256"] and rec["settings"]["extra_lines"] == "drop"
+    assert json.loads(row(env["sub"])["seg"]) == rec["seg"]
+
+
+def test_history_shows_every_run_of_a_subtitle(env, capsys):
+    write_late(env)
+    worker.process(env["video"], env["sub"])
+    worker.process(env["video"], env["sub"])
+    capsys.readouterr()
+    worker.history("s01e01")
+    out = capsys.readouterr().out
+    assert "corrected" in out and "unchanged" in out and "offset -10.00 s" in out
+    worker.history("S02E05")
+    assert capsys.readouterr().out == ""
+
+
+def test_log_past_its_limit_loses_its_oldest_entries_only(env):
+    for n in range(2000):
+        worker.log({"status": "test", "n": n})
+    size = os.path.getsize(worker.LOG)
+    worker.trim_log(max_bytes=size // 4)
+    lines = Path(worker.LOG).read_text(encoding="utf-8").splitlines()
+    assert os.path.getsize(worker.LOG) <= size // 8
+    assert [json.loads(x)["n"] for x in lines] == list(range(2000 - len(lines), 2000))   # whole, newest
+    assert not list(Path(env["tmp"]).glob("semsync.log.*"))             # no archive copy
+    worker.trim_log(max_bytes=0)                                        # 0 = no limit
+    assert len(Path(worker.LOG).read_text(encoding="utf-8").splitlines()) == len(lines)
+
+
+def test_log_limit_is_applied_on_every_write(env, monkeypatch):
+    monkeypatch.setattr(worker, "LOG_MAX_BYTES", 4000)
+    for n in range(500):
+        worker.log({"status": "test", "n": n})
+        assert os.path.getsize(worker.LOG) <= 4000
+    assert json.loads(Path(worker.LOG).read_text(encoding="utf-8").splitlines()[-1])["n"] == 499
+
+
 def test_bazarr_enqueue_is_atomic_and_standalone(tmp_path):
     """enqueue.py runs under Bazarr's own python: no dependency, writes next to itself."""
     script = tmp_path / "enqueue.py"

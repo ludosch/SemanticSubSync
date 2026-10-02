@@ -6,6 +6,23 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- Worker: `history TEXT` prints every logged decision about the paths containing TEXT.
+- Worker: the log is limited to `SEMSYNC_LOG_MAX_MB` (default 10); beyond it, its oldest entries
+  are deleted.
+- `tools/smoke_image.py`: the release checks that each image reads an embedded subtitle.
+
+### Changed
+- Worker: each log line also holds the hashes of the synced subtitle and of the correction, and
+  the settings. `state.db` also keeps `seg`.
+- CI: one job per architecture (x86-64 on Python 3.11, ARM64 on 3.12), no Docker build on
+  pushes (the release builds and checks the images), not run for documentation-only changes;
+  actions updated to their Node 24 versions.
+- README: shorter paragraphs, lists and sub-headings.
+
+### Fixed
+- Worker: the offsets applied per segment (`seg`) were missing from the log since 0.10.0.
+
 ## [0.10.0] - 2026-10-02
 
 ### Added

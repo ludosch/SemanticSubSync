@@ -21,6 +21,7 @@ Usage: semantic-subsync-worker run                          process the queue fo
        semantic-subsync-worker one [--force] VIDEO SUBTITLE process one pair now
        semantic-subsync-worker backfill [ROOT]              enqueue every external .srt next to its video
        semantic-subsync-worker status [--fields] [TEXT]     what state.db knows (TEXT: filter on paths)
+       semantic-subsync-worker history TEXT                 every logged decision about paths containing TEXT
 """
 import gc, json, os, sys, time, traceback
 from semantic_subsync import __version__, core, media
@@ -29,6 +30,8 @@ from semantic_subsync.state import FIELDS, State, sha256, video_stamp
 BASE = os.environ.get("SEMSYNC_DIR", "/data/.semsync")
 QUEUE, FAILED = f"{BASE}/queue", f"{BASE}/failed"
 LOG = f"{BASE}/semsync.log"
+# the log is the history of every decision; past this size its oldest entries are deleted
+LOG_MAX_BYTES = int(float(os.environ.get("SEMSYNC_LOG_MAX_MB", "10")) * 1024 * 1024)
 DB = f"{BASE}/state.db"
 POLL = 30
 OUTPUT = os.environ.get("SEMSYNC_OUTPUT", "replace")        # "replace" or "side"
@@ -45,6 +48,22 @@ def log(rec):
     print(line, flush=True)
     with open(LOG, "a", encoding="utf-8") as f:
         f.write(line + "\n")
+    trim_log()
+
+
+def trim_log(max_bytes=None):
+    """Past SEMSYNC_LOG_MAX_MB, delete the oldest entries: the newest half of the limit is kept,
+    cut at a line boundary. No archive copy is made. 0 = no limit."""
+    max_bytes = LOG_MAX_BYTES if max_bytes is None else max_bytes
+    if not max_bytes or os.path.getsize(LOG) <= max_bytes:
+        return
+    with open(LOG, "rb") as f:
+        f.seek(-(max_bytes // 2), os.SEEK_END)
+        f.readline()                                   # the first line read is a partial one
+        kept = f.read()
+    with open(LOG + ".tmp", "wb") as f:
+        f.write(kept)
+    os.replace(LOG + ".tmp", LOG)
 
 
 def tagged_path(video, sub, tag):
@@ -150,8 +169,7 @@ def _process(video, sub, rec, t0, force, score, state):
                 "replaced_path": replaced if outp == sub else None}
         state.put(full)
         cleaned = [p for p in cleaned if p]
-        log({k: v for k, v in full.items() if v is not None and k not in ("settings", "input_sha256", "output_sha256")}
-            | ({"removed": cleaned} if cleaned else {}))
+        log({k: v for k, v in full.items() if v is not None} | ({"removed": cleaned} if cleaned else {}))
 
     tracks = media.probe_subtitles(video)
     twin = media.embedded_twin(tracks, sub)
@@ -163,12 +181,20 @@ def _process(video, sub, rec, t0, force, score, state):
     ref, ref_desc = found
     status, out, st = core.resync(media.read_srt(source), ref, p={**core.P, "extra_lines": EXTRA_LINES})
     info = {"reference": ref_desc, "coverage": st.get("coverage"), "segments": st.get("segments"),
-            "max_abs_offset": st.get("max_abs_offset"), "dropped": st.get("dropped")}
+            "max_abs_offset": st.get("max_abs_offset"), "dropped": st.get("dropped"), "seg": segments(st)}
     if status == "refused":
         return settle("refused", **info, reason=st.get("status"))
     if status == "in_sync":
         return settle("in_sync", **info)
     settle("corrected", out, **info)
+
+
+def segments(st):
+    """The correction, segment by segment: from / to (s, in the subtitle), offset at the start of
+    the segment (s) and frame-rate drift (ppm; 23.976 -> 25 fps is about -40000)."""
+    return [{"from": round(s["t0"], 2), "to": round(s["t1"], 2),
+             "offset": round(s["a"] + s["drift_ppm"] * 1e-6 * s["t0"], 2), "drift_ppm": round(s["drift_ppm"])}
+            for s in st.get("seg", [])] or None
 
 
 def unload_model():
@@ -227,6 +253,29 @@ def status(args):
     print(json.dumps(counts))
 
 
+def history(text):
+    """Every log entry about the subtitles or videos whose path contains `text`, oldest first."""
+    if not os.path.exists(LOG):
+        return
+    with open(LOG, encoding="utf-8") as f:
+        for line in f:
+            try:
+                r = json.loads(line)
+            except ValueError:
+                continue
+            if text.lower() not in (r.get("sub", "") + r.get("video", "")).lower():
+                continue
+            head = f"{r['ts']}  {r['status']:12} {os.path.basename(r.get('sub', ''))}"
+            facts = [f"{k}={r[k]}" for k in ("origin", "reference", "coverage", "segments", "max_abs_offset",
+                                             "dropped", "reason", "engine_version", "secs") if r.get(k) is not None]
+            print(head + ("\n    " + "  ".join(facts) if facts else ""))
+            for s in r.get("seg") or []:
+                print(f"    {s['from']:8.1f} s -> {s['to']:8.1f} s  offset {s['offset']:+.2f} s"
+                      + (f"  drift {s['drift_ppm']} ppm" if s.get("drift_ppm") else ""))
+            for p in r.get("removed") or []:
+                print(f"    removed {os.path.basename(p)}")
+
+
 def main():
     os.nice(19)                     # Jellyfin keeps priority on the CPU
     args = sys.argv[1:] or ["run"]
@@ -242,6 +291,8 @@ def main():
         backfill(rest[0] if rest else "/data/media")
     elif cmd == "status":
         status(rest)
+    elif cmd == "history" and rest:
+        history(rest[0])
     else:
         sys.exit(__doc__)
 

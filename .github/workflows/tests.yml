@@ -1,32 +1,37 @@
 name: tests
 
 on:
+  # Branch pushes only (a release tag is built by release.yml from a commit already tested),
+  # and not for documentation-only changes: CI minutes are limited on a private repository.
   push:
+    branches: [main]
+    paths-ignore: ["**.md", "docs/**", "LICENSE"]
   pull_request:
+    paths-ignore: ["**.md", "docs/**", "LICENSE"]
+  workflow_dispatch:
 
 jobs:
-  pytest:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python: ["3.11", "3.12"]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
-      - run: uv run --python ${{ matrix.python }} pytest -q
-
-  # End to end with the real model, on x86-64 and on ARM64 (Raspberry Pi class hardware).
-  # The goal is "runs without crashing" on both architectures, not speed.
+  # Unit tests, then end to end with the real model, on x86-64 and on ARM64 (Raspberry Pi class
+  # hardware). The goal is "runs without crashing" on both architectures, not speed. Each
+  # architecture runs one of the two supported Python versions: 3.11 is the oldest one and the
+  # Docker image's, 3.12 a newer one. Each job is billed by the started minute, hence one job
+  # per architecture and no Docker build here (release.yml builds and checks the images).
   end-to-end:
     strategy:
       fail-fast: false
       matrix:
-        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+        include:
+          - runner: ubuntu-24.04
+            python: "3.11"
+          - runner: ubuntu-24.04-arm
+            python: "3.12"
     runs-on: ${{ matrix.runner }}
+    env:
+      UV_PYTHON: ${{ matrix.python }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
-      - run: uname -m
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.2.0
+      - run: uname -m && uv run python --version
 
       - name: Unit tests
         run: uv run pytest -q
@@ -70,9 +75,3 @@ jobs:
               print(f"{case}: {100 * share:.1f} % of lines within 300 ms")
               assert share >= 0.95, case
           EOF
-
-      - name: Docker image
-        run: |
-          docker build -t semantic-subsync .
-          docker run --rm semantic-subsync semantic-subsync --version
-          docker run --rm semantic-subsync sh -c "ffprobe -version | head -1"

@@ -1,6 +1,6 @@
 [project]
 name = "semantic-subsync"
-version = "0.10.0"
+version = "0.10.1.dev0"
 description = "Re-time a subtitle on a reference subtitle in another language by matching cues on meaning."
 readme = "README.md"
 license = "MIT"
