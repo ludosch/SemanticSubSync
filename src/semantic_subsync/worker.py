@@ -27,7 +27,7 @@ Usage: semantic-subsync-worker run                          process the queue fo
        semantic-subsync-worker backfill [ROOT]              enqueue every external .srt next to its video
        semantic-subsync-worker status [--fields] [WORD...] what state.db knows, for the paths containing every WORD
        semantic-subsync-worker history WORD...              every logged decision about the paths containing every
-                                                            WORD, e.g. history Show S01E02 fr
+                                                            WORD, e.g. history TITLE S01E02 fr
 """
 import gc, json, os, sys, time, traceback
 from semantic_subsync import __version__, core, media
@@ -254,7 +254,7 @@ def backfill(root):
 
 
 def matches(path, terms):
-    """True when the path contains every term, whatever the case: `Show S01E02` does not
+    """True when the path contains every term, whatever the case: `TITLE S01E02` does not
     match the S01E02 of another series."""
     path = (path or "").lower()
     return all(t.lower() in path for t in terms)
