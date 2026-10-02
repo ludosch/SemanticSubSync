@@ -37,6 +37,11 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
             {
                 Name = Name,
                 EmbeddedResourcePath = string.Format(CultureInfo.InvariantCulture, "{0}.Configuration.configPage.html", GetType().Namespace)
+            },
+            new PluginPageInfo
+            {
+                Name = Web.MenuScriptInjection.Script,
+                EmbeddedResourcePath = string.Format(CultureInfo.InvariantCulture, "{0}.Web.{1}", GetType().Namespace, Web.MenuScriptInjection.Script)
             }
         ];
     }

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -33,6 +34,7 @@ public sealed class SyncService : IDisposable
     private readonly ILogger<SyncService> _logger;
     private readonly SemaphoreSlim _oneAtATime = new(1, 1);
     private readonly object _seenLock = new();
+    private readonly ConcurrentDictionary<string, byte> _warnedReadOnly = new();
     private Dictionary<string, string>? _seen;
 
     public SyncService(ILibraryManager library, ISessionManager sessions, IProviderManager providers, IFileSystem fileSystem,
@@ -51,14 +53,31 @@ public sealed class SyncService : IDisposable
 
     private static string SeenPath => Path.Combine(EngineInstaller.DataDir, "seen.json");
 
-    /// <summary>Every movie and episode that is a real file.</summary>
-    public IReadOnlyList<Video> Videos() =>
+    /// <summary>The chosen libraries that still exist.</summary>
+    public IReadOnlyList<Guid> ChosenLibraries()
+    {
+        var config = Plugin.Instance?.Configuration;
+        return config is null
+            ? []
+            : _library.GetUserRootFolder().Children.Select(f => f.Id).Where(config.IsChosen).ToList();
+    }
+
+    /// <summary>Every movie and episode of a library that is a real file.</summary>
+    public IReadOnlyList<Video> Videos(Guid libraryId) =>
         _library.GetItemList(new InternalItemsQuery
         {
             IncludeItemTypes = [BaseItemKind.Movie, BaseItemKind.Episode],
             IsVirtualItem = false,
             Recursive = true,
+            ParentId = libraryId,
         }).OfType<Video>().Where(v => !string.IsNullOrEmpty(v.Path) && File.Exists(v.Path)).ToList();
+
+    /// <summary>Whether the video belongs to a library that was chosen.</summary>
+    public bool InChosenLibrary(Video video)
+    {
+        var config = Plugin.Instance?.Configuration;
+        return config is not null && _library.GetCollectionFolders(video).Any(f => config.IsChosen(f.Id));
+    }
 
     public bool SomeoneIsWatching() => _sessions.Sessions.Any(s => s.NowPlayingItem is not null);
 
@@ -93,36 +112,66 @@ public sealed class SyncService : IDisposable
             return true;
         }
 
+        var done = await RunAsync(video, todo, waitForNoPlayback: true, ct).ConfigureAwait(false);
+        return done is not null && done.Count == todo.Count;
+    }
+
+    /// <summary>Asked from the item's menu: every external subtitle of the video, whatever its
+    /// library, now. Returns (file name, decision) per subtitle, or the reason nothing ran.</summary>
+    public async Task<IReadOnlyList<(string Subtitle, string Status)>> SyncNowAsync(Video video, CancellationToken ct)
+    {
+        var subs = SubtitlesOf(video.Path).ToList();
+        if (subs.Count == 0)
+        {
+            return [(string.Empty, "no_subtitle")];
+        }
+
+        return await RunAsync(video, subs, waitForNoPlayback: false, ct).ConfigureAwait(false)
+            ?? [(string.Empty, "engine_unavailable")];
+    }
+
+    /// <summary>Runs the engine on `subs`, one at a time. Stops before a subtitle when someone is
+    /// watching (if asked). Null when the engine cannot be installed.</summary>
+    private async Task<List<(string Subtitle, string Status)>?> RunAsync(Video video, List<string> subs, bool waitForNoPlayback, CancellationToken ct)
+    {
+        var results = new List<(string Subtitle, string Status)>();
         if (!CanWrite(Path.GetDirectoryName(video.Path)!))
         {
-            _logger.LogWarning("SemanticSubSync: cannot write in the folder of {Video}: is the media library mounted read-only (:ro)? Skipped", video.Path);
-            return true;
+            if (_warnedReadOnly.TryAdd(Path.GetDirectoryName(video.Path)!, 0))   // once per folder, not every run
+            {
+                _logger.LogWarning("SemanticSubSync: cannot write in the folder of {Video}: is the media library mounted read-only (:ro)? Skipped", video.Path);
+            }
+
+            subs.ForEach(s => results.Add((Path.GetFileName(s), "read_only")));
+            return results;
         }
 
         if (!await _installer.EnsureAsync(ct).ConfigureAwait(false))
         {
-            return false;
+            return null;
         }
 
         await _oneAtATime.WaitAsync(ct).ConfigureAwait(false);
         try
         {
             var changed = false;
-            foreach (var sub in todo)
+            foreach (var sub in subs)
             {
-                if (SomeoneIsWatching())
+                if (waitForNoPlayback && SomeoneIsWatching())
                 {
                     _logger.LogInformation("SemanticSubSync: playback in progress, postponed");
-                    return false;
+                    break;
                 }
 
                 var result = await _runner.RunAsync(video.Path, sub, ct).ConfigureAwait(false);
                 if (result is null)
                 {
-                    continue;   // error, logged by the runner; tried again on the next run
+                    results.Add((Path.GetFileName(sub), "error"));   // logged by the runner; tried again on the next run
+                    continue;
                 }
 
                 _logger.LogInformation("SemanticSubSync: {Status} {Subtitle}", result.Status, sub);
+                results.Add((Path.GetFileName(sub), result.Status));
                 changed |= result.FilesChanged;
                 MarkSeen(sub);
             }
@@ -132,7 +181,7 @@ public sealed class SyncService : IDisposable
                 _providers.QueueRefresh(video.Id, new MetadataRefreshOptions(new DirectoryService(_fileSystem)), RefreshPriority.High);
             }
 
-            return true;
+            return results;
         }
         finally
         {
@@ -140,21 +189,24 @@ public sealed class SyncService : IDisposable
         }
     }
 
-    private static string BaselinePath => Path.Combine(EngineInstaller.DataDir, "baseline.done");
+    private static string BaselinePath => Path.Combine(EngineInstaller.DataDir, "libraries.json");
 
-    /// <summary>On the very first run, unless ProcessExisting is on, records the subtitles already
-    /// there as seen without processing them. Returns true when it did so.</summary>
-    public bool BaselineIfFirstRun(IReadOnlyList<Video> videos)
+    /// <summary>The first time a library is seen as chosen, unless ProcessExisting is on, records its
+    /// subtitles as seen without processing them. Returns true when it did so.</summary>
+    public bool BaselineIfNew(Guid libraryId, IReadOnlyList<Video> videos)
     {
-        if (File.Exists(BaselinePath))
+        lock (_seenLock)
         {
-            return false;
-        }
+            var done = File.Exists(BaselinePath)
+                ? JsonSerializer.Deserialize<HashSet<Guid>>(File.ReadAllText(BaselinePath)) ?? []
+                : [];
+            if (!done.Add(libraryId))
+            {
+                return false;
+            }
 
-        var count = 0;
-        if (Plugin.Instance?.Configuration.ProcessExisting != true)
-        {
-            lock (_seenLock)
+            var count = 0;
+            if (Plugin.Instance?.Configuration.ProcessExisting != true)
             {
                 var seen = Seen();
                 foreach (var sub in videos.SelectMany(v => SubtitlesOf(v.Path)))
@@ -164,14 +216,13 @@ public sealed class SyncService : IDisposable
                 }
 
                 SaveSeen(seen);
+                _logger.LogInformation("SemanticSubSync: library {Library} chosen, {Count} existing subtitles recorded and left as they are",
+                    _library.GetItemById(libraryId)?.Name ?? libraryId.ToString(), count);
             }
 
-            _logger.LogInformation("SemanticSubSync: first run, {Count} existing subtitles recorded and left as they are", count);
+            File.WriteAllText(BaselinePath, JsonSerializer.Serialize(done));
+            return count > 0;
         }
-
-        Directory.CreateDirectory(EngineInstaller.DataDir);
-        File.WriteAllText(BaselinePath, DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture));
-        return count > 0;
     }
 
     private static bool CanWrite(string dir)

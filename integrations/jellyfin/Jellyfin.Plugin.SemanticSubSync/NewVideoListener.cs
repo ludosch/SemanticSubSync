@@ -52,7 +52,7 @@ public sealed class NewVideoListener : IHostedService, IDisposable
 
     private void OnItemAdded(object? sender, ItemChangeEventArgs e)
     {
-        if (e.Item is Video { IsVirtualItem: false } && Plugin.Instance?.Configuration.Enabled == true)
+        if (e.Item is Video { IsVirtualItem: false } && Plugin.Instance?.Configuration.Libraries.Length > 0)
         {
             _pending[e.Item.Id] = 0;
             _timer.Change(Settle, Timeout.InfiniteTimeSpan);
@@ -78,7 +78,7 @@ public sealed class NewVideoListener : IHostedService, IDisposable
                 foreach (var id in _pending.Keys)
                 {
                     _pending.TryRemove(id, out _);
-                    if (_library.GetItemById(id) is Video video && !string.IsNullOrEmpty(video.Path)
+                    if (_library.GetItemById(id) is Video video && !string.IsNullOrEmpty(video.Path) && _sync.InChosenLibrary(video)
                         && !await _sync.ProcessAsync(video, _stop.Token).ConfigureAwait(false))
                     {
                         _pending[id] = 0;   // interrupted by playback: try again once it ends

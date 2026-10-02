@@ -305,9 +305,10 @@ The engine knows nothing about media servers or subtitle managers. Integrations 
 - [**Bazarr**](integrations/bazarr/README.md): each downloaded subtitle is checked
   automatically by a background worker and corrected when needed. The downloaded version stays
   available as an extra track, and every decision is logged.
-- [**Jellyfin**](integrations/jellyfin/README.md): a plugin that installs the engine itself and
-  re-times the subtitles of new videos and new subtitle files, then refreshes the item so the
-  tracks show at once. No extra container; Jellyfin needs write access to the media folders.
+- [**Jellyfin**](integrations/jellyfin/README.md): a plugin that installs the engine itself. "Sync
+  subtitles" in the menu of a movie or an episode re-times its subtitles; in the libraries you
+  choose, new videos and new subtitle files are handled automatically. The item is refreshed so
+  the tracks show at once. No extra container; Jellyfin needs write access to the media folders.
 
 ## Model
 

@@ -39,17 +39,20 @@ Manual install: unzip `jellyfin-plugin-semanticsubsync-<version>.zip` from a
 
 ## What it does
 
+Nothing happens on its own until you choose libraries.
+
 | When | What |
 |---|---|
-| A movie or an episode is added to the library | Its external `.srt` files are processed, about 30 s after the scan adds it |
-| Scheduled task **Re-time new subtitles** (every 30 min, Dashboard > Scheduled Tasks) | The `.srt` files added or changed since the last run, e.g. downloaded by Bazarr or by hand |
+| **Sync subtitles** in the "..." menu of a movie or an episode (administrators) | All its external `.srt` files, now, in any library; the result shows at the bottom of the screen |
+| A movie or an episode is added to a chosen library | Its external `.srt` files, about 30 s after the scan adds it |
+| Scheduled task **Re-time new subtitles** (every 30 min, Dashboard > Scheduled Tasks) | In the chosen libraries, the `.srt` files added or changed since the last run, e.g. downloaded by Bazarr or by hand |
 
-- **First run.** The subtitles already in the library are recorded and left as they are; only
-  the ones added later are processed. Tick *Also process the subtitles already in the library*
-  before the first run to process everything (on a large library and a small server, this can
-  take hours).
+- **Choosing a library.** The subtitles already in it are recorded on the next run of the task and
+  left as they are; only the ones added later are processed. Tick *Also process the subtitles
+  already in a library when it is chosen* first to process everything (on a large library and a
+  small server, this can take hours).
 - **One subtitle at a time**, at the lowest CPU priority, and **never while someone is watching**:
-  the work waits for playback to end.
+  the automatic work waits for playback to end. The menu entry runs at once.
 - A subtitle belongs to a video when its name starts with the video's name
   (`Movie.fr.srt`, `Movie.fr.hi.srt` for `Movie.mkv`).
 - The decisions are those of the worker: corrected, in sync (nothing changes), unsure (left
@@ -61,8 +64,8 @@ Manual install: unzip `jellyfin-plugin-semanticsubsync-<version>.zip` from a
 
 Dashboard > Plugins > SemanticSubSync:
 
-- **Enabled.**
-- **Also process the subtitles already in the library** (first run only).
+- **Automatic in these libraries**: none by default.
+- **Also process the subtitles already in a library when it is chosen.**
 - **Correction**: replace the subtitle and keep the download as `replaced` (default), or add the
   correction next to the download as `resync`.
 - **Engine source** (advanced): a wheel path or URL to install instead of the release the plugin

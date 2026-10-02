@@ -76,8 +76,12 @@ public sealed class EngineRunner
         using var doc = JsonDocument.Parse(line);
         var root = doc.RootElement;
         var status = root.TryGetProperty("status", out var s) ? s.GetString() ?? "?" : "?";
+        if (status == "unchanged" && root.TryGetProperty("last", out var last) && last.ValueKind == JsonValueKind.String)
+        {
+            status += ":" + last.GetString();   // e.g. "unchanged:corrected", the decision it keeps
+        }
         // any decision may have written, restored or removed a file; only these two touch nothing
-        var changed = status is not ("unchanged" or "skipped");
+        var changed = !status.StartsWith("unchanged", StringComparison.Ordinal) && status != "skipped";
         return new EngineResult(status, changed, line);
     }
 }

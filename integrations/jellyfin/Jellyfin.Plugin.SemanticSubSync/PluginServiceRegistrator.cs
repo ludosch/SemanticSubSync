@@ -1,8 +1,10 @@
 using System.Net.Http.Headers;
 using Jellyfin.Plugin.SemanticSubSync.Engine;
+using Jellyfin.Plugin.SemanticSubSync.Web;
 using MediaBrowser.Controller;
 using MediaBrowser.Controller.Plugins;
 using MediaBrowser.Model.Tasks;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Jellyfin.Plugin.SemanticSubSync;
@@ -18,5 +20,6 @@ public sealed class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<SyncService>();
         serviceCollection.AddSingleton<IScheduledTask, SyncNewSubtitlesTask>();
         serviceCollection.AddHostedService<NewVideoListener>();
+        serviceCollection.AddSingleton<IStartupFilter, MenuScriptStartupFilter>();
     }
 }

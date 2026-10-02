@@ -1,13 +1,16 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using MediaBrowser.Controller.Entities;
 using MediaBrowser.Model.Tasks;
 
 namespace Jellyfin.Plugin.SemanticSubSync;
 
-/// <summary>Scheduled task: goes through every movie and episode and re-times the external
-/// subtitles that are new or changed since the last run (e.g. downloaded by Bazarr).</summary>
+/// <summary>Scheduled task: goes through the movies and episodes of the chosen libraries and
+/// re-times the external subtitles that are new or changed since the last run (e.g. downloaded
+/// by Bazarr).</summary>
 public sealed class SyncNewSubtitlesTask : IScheduledTask
 {
     private readonly SyncService _sync;
@@ -21,23 +24,28 @@ public sealed class SyncNewSubtitlesTask : IScheduledTask
 
     public string Key => "SemanticSubSyncNewSubtitles";
 
-    public string Description => "Re-times the external subtitles added or changed since the last run, on the subtitle embedded in each video.";
+    public string Description => "Re-times the external subtitles added or changed since the last run in the chosen libraries, on the subtitle embedded in each video.";
 
     public string Category => "SemanticSubSync";
 
     public async Task ExecuteAsync(IProgress<double> progress, CancellationToken cancellationToken)
     {
-        if (Plugin.Instance?.Configuration.Enabled != true || _sync.SomeoneIsWatching())
+        if (_sync.SomeoneIsWatching())
         {
             return;
         }
 
-        var videos = _sync.Videos();
-        if (_sync.BaselineIfFirstRun(videos))
+        var videos = new List<Video>();
+        foreach (var lib in _sync.ChosenLibraries())
         {
-            return;
+            var inLib = _sync.Videos(lib);
+            if (!_sync.BaselineIfNew(lib, inLib))
+            {
+                videos.AddRange(inLib);
+            }
         }
 
+        videos = videos.DistinctBy(v => v.Id).ToList();
         for (var i = 0; i < videos.Count; i++)
         {
             cancellationToken.ThrowIfCancellationRequested();

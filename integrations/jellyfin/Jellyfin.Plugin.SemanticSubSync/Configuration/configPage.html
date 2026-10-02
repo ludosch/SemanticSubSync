@@ -11,23 +11,21 @@
                 <form id="SemanticSubSyncConfigForm">
                     <p>Re-times the external <code>.srt</code> subtitles of movies and episodes on the subtitle
                         embedded in the video, by matching lines on meaning. When too few lines match, the file is
-                        left alone. Runs when a video is added and with the scheduled task
-                        <em>Re-time new subtitles</em> (Dashboard &gt; Scheduled Tasks).</p>
-                    <p>The engine (about 500 MB with its model) is installed in the plugin's data folder on first
+                        left alone.</p>
+                    <p>Any movie or episode: <em>Sync subtitles</em> in its menu. Chosen libraries: automatically,
+                        when a video is added and with the scheduled task <em>Re-time new subtitles</em>
+                        (Dashboard &gt; Scheduled Tasks).</p>
+                    <p>The engine (about 700 MB with its model) is installed in the plugin's data folder on first
                         use. Jellyfin needs write access to the media folders.</p>
-                    <div class="checkboxContainer">
-                        <label class="emby-checkbox-label">
-                            <input id="Enabled" type="checkbox" is="emby-checkbox" />
-                            <span>Enabled</span>
-                        </label>
-                    </div>
+                    <h3>Automatic in these libraries</h3>
+                    <div id="SssLibraries"></div>
                     <div class="checkboxContainer checkboxContainer-withDescription">
                         <label class="emby-checkbox-label">
                             <input id="ProcessExisting" type="checkbox" is="emby-checkbox" />
-                            <span>Also process the subtitles already in the library</span>
+                            <span>Also process the subtitles already in a library when it is chosen</span>
                         </label>
-                        <div class="fieldDescription checkboxFieldDescription">Applies to the first run only. Off: the
-                            subtitles already there are left as they are, and only the ones added later are processed.
+                        <div class="fieldDescription checkboxFieldDescription">Off: when a library is chosen, the
+                            subtitles already in it are left as they are, and only the ones added later are processed.
                             On a large library and a small server, processing everything can take hours.</div>
                     </div>
                     <div class="selectContainer">
@@ -57,7 +55,21 @@
             document.querySelector('#SemanticSubSyncConfigPage').addEventListener('pageshow', function () {
                 Dashboard.showLoadingMsg();
                 ApiClient.getPluginConfiguration(SemanticSubSyncConfig.pluginUniqueId).then(function (config) {
-                    document.querySelector('#Enabled').checked = config.Enabled;
+                    var chosen = config.Libraries || [];
+                    ApiClient.getVirtualFolders().then(function (folders) {
+                        var box = document.querySelector('#SssLibraries');
+                        box.innerHTML = '';
+                        folders.forEach(function (f) {
+                            var div = document.createElement('div');
+                            div.className = 'checkboxContainer';
+                            div.innerHTML = '<label class="emby-checkbox-label"><input type="checkbox" is="emby-checkbox" class="sssLib" /><span></span></label>';
+                            var input = div.querySelector('input');
+                            input.setAttribute('data-id', f.ItemId);
+                            input.checked = chosen.indexOf(f.ItemId) >= 0;
+                            div.querySelector('span').textContent = f.Name;
+                            box.appendChild(div);
+                        });
+                    });
                     document.querySelector('#ProcessExisting').checked = config.ProcessExisting;
                     document.querySelector('#OutputMode').value = config.OutputMode;
                     document.querySelector('#EngineSource').value = config.EngineSource || '';
@@ -68,7 +80,8 @@
             document.querySelector('#SemanticSubSyncConfigForm').addEventListener('submit', function (e) {
                 Dashboard.showLoadingMsg();
                 ApiClient.getPluginConfiguration(SemanticSubSyncConfig.pluginUniqueId).then(function (config) {
-                    config.Enabled = document.querySelector('#Enabled').checked;
+                    config.Libraries = Array.prototype.map.call(
+                        document.querySelectorAll('.sssLib:checked'), function (i) { return i.getAttribute('data-id'); });
                     config.ProcessExisting = document.querySelector('#ProcessExisting').checked;
                     config.OutputMode = document.querySelector('#OutputMode').value;
                     config.EngineSource = document.querySelector('#EngineSource').value.trim();

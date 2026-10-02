@@ -10,9 +10,10 @@ All notable changes to this project are documented here. The format follows
 - Jellyfin plugin (`integrations/jellyfin`, Jellyfin 12.1, Linux x86-64 and ARM64): installs
   the engine in its own data folder (uv, a standalone Python, `semantic-subsync[static]`), runs
   the worker on the subtitles of each video added to the library and, with a scheduled task, on
-  the subtitle files added or changed since the last run; never while someone is watching; then
-  refreshes the item so the tracks show without a library scan. The subtitles already there on
-  the first run are left alone unless asked.
+  the subtitle files added or changed since the last run, in the libraries chosen on its page
+  (none by default); never while someone is watching; then refreshes the item so the tracks show
+  without a library scan. "Sync subtitles" in the menu of a movie or an episode runs it at once.
+  The subtitles already in a library when it is chosen are left alone unless asked.
 - Optional dependency set `static` (`pip install "semantic-subsync[static]"`): only what the
   default `static` model needs, without the `minilm` runtime.
 
