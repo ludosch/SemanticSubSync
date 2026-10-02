@@ -3,7 +3,7 @@ import argparse, json, os, sys
 
 from . import __version__, core, media
 
-EXIT_OK, EXIT_REFUSED, EXIT_ERROR = 0, 1, 2
+EXIT_OK, EXIT_UNSURE, EXIT_ERROR = 0, 1, 2
 
 
 def default_output(subtitle):
@@ -17,8 +17,8 @@ def parser():
         description="Re-time SUBTITLE on REFERENCE by matching lines on meaning, across languages. "
                     "REFERENCE is a subtitle file already in sync with the video, or the video itself: "
                     "its fullest embedded text subtitle (any language) is then used.",
-        epilog="Exit status: 0 corrected or already in sync, 1 refused (reference not trustworthy "
-               "for this subtitle), 2 error.")
+        epilog="Exit status: 0 corrected or already in sync, 1 unsure (too few lines match the reference: "
+               "nothing written), 2 error.")
     ap.add_argument("subtitle", help="the .srt to re-time (never modified)")
     ap.add_argument("reference", help="a .srt in sync with the video, or the video file")
     ap.add_argument("-o", "--output", help="where to write the result (default: SUBTITLE.synced.srt)")
@@ -32,7 +32,7 @@ def parser():
                          "drop them all (default), or keep them where nothing is shown nor said, "
                          "a block of consecutive lines whole or not at all")
     ap.add_argument("--min-coverage", type=float, default=core.MIN_COVERAGE, metavar="X",
-                    help=f"refuse below this share of anchored lines (default {core.MIN_COVERAGE})")
+                    help=f"leave the file alone below this share of anchored lines (default {core.MIN_COVERAGE})")
     ap.add_argument("--json", action="store_true", help="print the decision and statistics as JSON")
     ap.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     return ap
@@ -74,10 +74,10 @@ def main(argv=None):
         elif status == "in_sync":
             msg = "already in sync, nothing written"
         else:
-            msg = (f"refused ({st.get('status')}, coverage {st.get('coverage', 0)}): "
-                   "the reference does not match this subtitle")
+            msg = (f"unsure ({st.get('status')}, coverage {st.get('coverage', 0)}): "
+                   "too few lines match the reference, nothing written")
         print(f"{msg} [reference: {ref_desc}]", file=sys.stderr)
-    return EXIT_REFUSED if status == "refused" else EXIT_OK
+    return EXIT_UNSURE if status == "unsure" else EXIT_OK
 
 
 if __name__ == "__main__":

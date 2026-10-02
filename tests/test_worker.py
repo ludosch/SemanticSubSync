@@ -124,7 +124,7 @@ def test_tagged_path(video, sub, expected):
 
 @pytest.mark.parametrize("name,own", [
     ("Show.fr.srt", False), ("Show.replaced.fr.srt", True), ("Show.resync.fr.hi.srt", True),
-    ("Show.semsync.fr.srt", True), ("Replaced Lives.fr.srt", False),
+    ("Replaced Lives.fr.srt", False),
 ])
 def test_is_own(name, own):
     assert worker.is_own("/m/" + name) is own
@@ -243,11 +243,11 @@ def test_no_correction_any_more_gives_the_download_its_name_back(env):
     assert Path(env["sub"]).read_bytes() == before and not replaced_of(env).exists()
 
 
-def test_refused_on_unrelated_reference(env):
+def test_unsure_on_unrelated_reference(env):
     before = write_late(env)
     env["refs"][:] = [([[s, e, f"line k{k + 9999}"] for s, e, k in env["base"]], "#4 en Commentary")]
     worker.process(env["video"], env["sub"])
-    assert last_log(env)["status"] == "refused"
+    assert last_log(env)["status"] == "unsure"
     assert Path(env["sub"]).read_bytes() == before and not replaced_of(env).exists()
 
 
@@ -264,14 +264,6 @@ def test_no_reference(env):
     env["refs"][:] = [(ref_cues(env["base"][:10]), "#2 too short")]
     worker.process(env["video"], env["sub"])
     assert last_log(env)["status"] == "no_reference"
-
-
-def test_legacy_semsync_file_is_removed(env):
-    write_late(env)
-    legacy = Path(worker.tagged_path(env["video"], env["sub"], worker.LEGACY))
-    legacy.write_text("from 0.9", encoding="utf-8")
-    worker.process(env["video"], env["sub"])
-    assert not legacy.exists() and str(legacy) in last_log(env)["removed"]
 
 
 # --- the video already has this subtitle -------------------------------------------------------
@@ -337,7 +329,7 @@ def test_switching_from_replace_to_side_restores_the_download(env, monkeypatch):
 
 # --- skipped, queue, state ---------------------------------------------------------------------
 
-@pytest.mark.parametrize("which", ["missing_video", "not_srt", "replaced", "resync", "legacy"])
+@pytest.mark.parametrize("which", ["missing_video", "not_srt", "replaced", "resync"])
 def test_skipped(env, which):
     core.write(env["sub"], tgt_cues(env["base"]))
     video, sub = env["video"], env["sub"]
@@ -346,7 +338,7 @@ def test_skipped(env, which):
     elif which == "not_srt":
         sub = sub[:-4] + ".ass"; Path(sub).write_text("x", encoding="utf-8")
     else:
-        tag = {"replaced": worker.REPLACED, "resync": worker.RESYNC, "legacy": worker.LEGACY}[which]
+        tag = {"replaced": worker.REPLACED, "resync": worker.RESYNC}[which]
         sub = worker.tagged_path(video, sub, tag); core.write(sub, tgt_cues(env["base"]))
     worker.process(video, sub)
     assert last_log(env)["status"] == "skipped"

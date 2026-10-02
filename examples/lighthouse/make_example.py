@@ -14,7 +14,7 @@ Three situations, one folder each:
                      video; every line after them is a minute late.
   3-wrong-reference  The French of situation 1, but the reference given is the director's
                      commentary track: it is in sync, yet says something else. The right answer is
-                     to refuse.
+                     to leave the file alone.
 
 Usage: python make_example.py   (writes the files next to this script)
 """

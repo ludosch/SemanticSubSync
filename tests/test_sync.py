@@ -164,16 +164,16 @@ def test_deadband_does_not_hide_a_real_offset():
     assert accuracy(out, base, tol=0.15) >= 0.95
 
 
-# ---------- refusal: the reference does not say the same thing ----------
+# ---------- unsure: the reference does not say the same thing ----------
 
-def test_unrelated_reference_is_refused():
+def test_unrelated_reference_is_unsure():
     base = dialogue(n=300, seed=7)
     other = [[s, e, f"line k{k + 10000}"] for s, e, k in dialogue(n=300, seed=8)]
     out, st = run(tgt_cues(base), other)
     assert out is None or st["coverage"] < 0.25, st
 
 
-def test_commentary_like_reference_is_refused():
+def test_commentary_like_reference_is_unsure():
     """Like a commentary track taken as reference (real case): only a few lines in common."""
     base = dialogue(n=300, seed=9)
     ref = [[s, e, f"line k{k}" if k % 15 == 0 else f"line k{k + 10000}"] for s, e, k in base]

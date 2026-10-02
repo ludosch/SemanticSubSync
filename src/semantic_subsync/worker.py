@@ -39,8 +39,7 @@ OUTPUT = os.environ.get("SEMSYNC_OUTPUT", "replace")        # "replace" or "side
 # lines the video has no room for (a credit, a recap or a scene it lacks): "drop" or "keep"
 EXTRA_LINES = os.environ.get("SEMSYNC_EXTRA_LINES", core.P["extra_lines"])
 REPLACED, RESYNC = "replaced", "resync"
-LEGACY = "semsync"                                          # side files written by 0.9 and earlier
-OWN_TAGS = (REPLACED, RESYNC, LEGACY)
+OWN_TAGS = (REPLACED, RESYNC)
 
 
 def log(rec):
@@ -144,7 +143,7 @@ def _process(video, sub, rec, t0, force, score, state):
 
     def settle(status, out=None, **info):
         """Put the files in their final state; record and log the decision."""
-        cleaned = [p for p in [_remove(tagged_path(video, sub, LEGACY))] if p]
+        cleaned = []
         if out is None:
             if source == replaced:
                 os.replace(replaced, sub)          # back to the download: no correction any more
@@ -183,8 +182,8 @@ def _process(video, sub, rec, t0, force, score, state):
     status, out, st = core.resync(media.read_srt(source), ref, p={**core.P, "extra_lines": EXTRA_LINES})
     info = {"reference": ref_desc, "coverage": st.get("coverage"), "segments": st.get("segments"),
             "max_abs_offset": st.get("max_abs_offset"), "dropped": st.get("dropped"), "seg": segments(st)}
-    if status == "refused":
-        return settle("refused", **info, reason=st.get("status"))
+    if status == "unsure":
+        return settle("unsure", **info, reason=st.get("status"))
     if status == "in_sync":
         return settle("in_sync", **info)
     settle("corrected", out, **info)

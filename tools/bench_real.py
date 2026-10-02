@@ -6,7 +6,7 @@ out of the repository. In each episode the first English file is the reference; 
 is aligned on it, then the reference on it (both directions).
 
 Measured for each pair:
-- the decision (corrected / in_sync / refused) and the lines dropped (scenes the reference lacks);
+- the decision (corrected / in_sync / unsure) and the lines dropped (scenes the reference lacks);
 - invariants that hold whatever the truth: output in time order, nothing before 0 s, no overlap
   created by the correction;
 - a proxy accuracy: target lines with ONE obvious translation in the reference (cosine >= 0.70,
@@ -73,7 +73,7 @@ def measure(corpus, ep, t, r):
     raw, _ = core.sync(T, R)
     if raw is not None:
         rec.update(invariants(raw, T))
-    if status != "refused":
+    if status != "unsure":
         p = confident_pairs(T, R)
         final = out if status == "corrected" else T
         rec["n_confident"] = len(p)

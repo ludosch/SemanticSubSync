@@ -13,10 +13,10 @@ FIELDS = {
     "video": "path of its video",
     "lang": "language from the file name (fr, en, pt-br...)",
     "kind": "normal, hi (hearing impaired) or forced, from the file name",
-    "status": "corrected, in_sync, refused, no_reference or redundant",
-    "reason": "why it was refused or redundant",
+    "status": "corrected, in_sync, unsure, no_reference or redundant",
+    "reason": "why it was unsure or redundant",
     "reference": "embedded track used as reference (#index language title)",
-    "coverage": "share of lines anchored on the reference (refused below the threshold)",
+    "coverage": "share of lines anchored on the reference (unsure below the threshold)",
     "segments": "constant-offset segments found",
     "max_abs_offset": "largest shift applied, in seconds",
     "dropped": "lines left out (scenes or a recap the video lacks)",
@@ -61,9 +61,6 @@ class State:
         cols = ", ".join(f"{c} {'REAL' if c in _REAL else 'INTEGER' if c in _INT else 'TEXT'}"
                          + (" PRIMARY KEY" if c == "sub" else "") for c in FIELDS)
         self.db.execute(f"CREATE TABLE IF NOT EXISTS subtitles ({cols})")
-        have = {r[1] for r in self.db.execute("PRAGMA table_info(subtitles)")}
-        for c in FIELDS.keys() - have:              # a newer version added a column
-            self.db.execute(f"ALTER TABLE subtitles ADD COLUMN {c}")
         self.db.commit()
 
     def get(self, sub):

@@ -143,7 +143,7 @@ Each job line holds:
 |---|---|
 | `corrected` | Corrected; `seg` lists the offsets applied |
 | `in_sync` | Nothing to do |
-| `refused` | The embedded track does not match this subtitle (coverage too low) |
+| `unsure` | Too few lines match the embedded track (wrong reference, other cut): the file is left alone |
 | `no_reference` | No embedded text subtitle with at least 20 lines |
 | `redundant` | The video embeds a text subtitle of the same language and kind |
 | `unchanged` | Already processed, nothing changed since |

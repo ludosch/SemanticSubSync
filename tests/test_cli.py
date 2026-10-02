@@ -39,10 +39,10 @@ def test_in_sync_writes_nothing(files, capsys):
     assert not Path(cli.default_output(files["sub"])).exists()
 
 
-def test_refused_exit_status(files):
+def test_unsure_exit_status(files):
     core.write(files["sub"], tgt_cues(files["base"], warp=lambda t: t + 10))
     core.write(files["ref"], [[s, e, f"line k{k + 9999}"] for s, e, k in files["base"]])   # unrelated
-    assert cli.main([files["sub"], files["ref"], "-o", str(files["tmp"] / "out.srt")]) == cli.EXIT_REFUSED
+    assert cli.main([files["sub"], files["ref"], "-o", str(files["tmp"] / "out.srt")]) == cli.EXIT_UNSURE
     assert not (files["tmp"] / "out.srt").exists()
 
 

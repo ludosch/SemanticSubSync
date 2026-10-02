@@ -16,10 +16,10 @@ gets the same subtitle files, with a reference subtitle that is in sync with the
 
 | Tool | Scene missing + 25 fps | Extra scene | Wrong reference (commentary track) |
 |---|---|---|---|
-| alass 2.0.0 | ✅ in sync | ❌ part of the file off | ❌ rewrites the file instead of refusing |
-| ffsubsync 0.5.1 (with or without `--split-penalty`) | ❌ half of the file off | ❌ half of the file off | ❌ rewrites the file instead of refusing |
+| alass 2.0.0 | ✅ in sync | ❌ part of the file off | ❌ rewrites the file instead of leaving it alone |
+| ffsubsync 0.5.1 (with or without `--split-penalty`) | ❌ half of the file off | ❌ half of the file off | ❌ rewrites the file instead of leaving it alone |
 | LAPSE 2.2.3 | ❌ half of the file off, says "solid" | ❌ half of the file off, says "solid" | ❌ rewrites the file and says "solid" |
-| **SemanticSubSync** | ✅ **in sync** | ✅ **in sync** | ✅ **refuses, file left alone** |
+| **SemanticSubSync** | ✅ **in sync** | ✅ **in sync** | ✅ **unsure, file left alone** |
 
 This describes these files only, not every video. The figures, the details and the scripts to
 rerun it are in the example folder.
@@ -49,7 +49,7 @@ SemanticSubSync uses it as a reference and matches lines **by meaning**, with a 
 multilingual sentence model: "Where did you put the keys?" and "Où as-tu mis les clés ?" are
 recognized as the same line.
 
-When too few lines match (wrong reference, commentary track, different cut), it **refuses** and
+When too few lines match (wrong reference, commentary track, different cut), it is **unsure** and
 leaves the file alone.
 
 ## Example
@@ -132,7 +132,8 @@ per line, blue in sync, orange out of sync, green fixed.
 
 ### Guards
 
-- Fewer than 25 % of lines anchored: **refused**, the reference does not say the same thing.
+- Fewer than 25 % of lines anchored: **unsure**, the file is left alone: the reference does not
+  say the same thing.
 - Every correction smaller than 0.5 s: the file is **left untouched**. This is the natural gap
   between two languages, not a sync problem.
 - Lines that overlap in the file itself (a watermark, two speakers) are not a reason to rewrite
@@ -163,11 +164,11 @@ differ.
 | alass | 84 / 105 | 10, none reported |
 
 **Invalid cases.** On 11 cases with a commentary track or a partial track as reference,
-SemanticSubSync refused the ones where it would have done damage:
+SemanticSubSync left alone (unsure) the ones where it would have done damage:
 
 - the coverage of anchored lines was 0.07 or less there, against 0.32 to 0.82 on the valid
   cases;
-- the refusal threshold (0.25) sits in that gap; another library may need another value
+- the threshold (0.25) sits in that gap; another library may need another value
   (`--min-coverage`).
 
 **Audio-only tools,** for comparison, on the same kind of distortions: ffsubsync 29 / 44,
@@ -200,7 +201,7 @@ stays below 100 %.
 |---|---|---|
 | Left untouched (already in sync) | 66 | 92.8 % / 97.4 % |
 | Corrected | 44 | before: 1.9 % / 4.5 % — after: 82.7 % / 91.5 % |
-| Refused | 4 | — |
+| Unsure, left alone | 4 | — |
 
 - **Corrected pairs** covered the cases the tool is made for: 25 fps versus 23.976 fps (3
   episodes), cuts and scenes added or removed (3 to 6 segments, including an extended DVD cut),
@@ -210,7 +211,7 @@ stays below 100 %.
   - 2 of the 44 ended slightly below the untouched file (one Greek subtitle in both
     directions, 95.7 % then 93.2 % at 1 s), for a correction of about 0.5 s, just above the
     deadband.
-- **Refusals:** 2 files in both directions, whose content belongs to another episode than their
+- **Unsure:** 2 files in both directions, whose content belongs to another episode than their
   name says (the dialogue and the duration do not match the reference).
 - **Extra lines:** 170 had no room in the video, 140 of them being the 35-line recap of one
   release, aligned on releases without it.
@@ -262,7 +263,7 @@ video, the fullest embedded text subtitle is used, in any language, forced track
 - The input subtitle is never modified. The result goes to `SUBTITLE.synced.srt` by default
   (`-o` to change it).
 - Already in sync: nothing is written.
-- Exit status: `0` corrected or already in sync, `1` refused, `2` error.
+- Exit status: `0` corrected or already in sync, `1` unsure (nothing written), `2` error.
 - `--json` prints the decision and the statistics (coverage, segments, offsets, lines dropped,
   extra lines kept).
 

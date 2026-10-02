@@ -17,10 +17,10 @@ calé sur la vidéo.
 
 | Outil | Scène absente + 25 i/s | Scène en trop | Mauvaise référence (piste commentaire) |
 |---|---|---|---|
-| alass 2.0.0 | ✅ synchronisé | ❌ une partie du fichier décalée | ❌ réécrit le fichier au lieu de refuser |
-| ffsubsync 0.5.1 (avec ou sans `--split-penalty`) | ❌ la moitié du fichier décalée | ❌ la moitié du fichier décalée | ❌ réécrit le fichier au lieu de refuser |
+| alass 2.0.0 | ✅ synchronisé | ❌ une partie du fichier décalée | ❌ réécrit le fichier au lieu de le laisser tel quel |
+| ffsubsync 0.5.1 (avec ou sans `--split-penalty`) | ❌ la moitié du fichier décalée | ❌ la moitié du fichier décalée | ❌ réécrit le fichier au lieu de le laisser tel quel |
 | LAPSE 2.2.3 | ❌ la moitié du fichier décalée, se dit « solid » | ❌ la moitié du fichier décalée, se dit « solid » | ❌ réécrit le fichier et se dit « solid » |
-| **SemanticSubSync** | ✅ **synchronisé** | ✅ **synchronisé** | ✅ **refuse, fichier intact** |
+| **SemanticSubSync** | ✅ **synchronisé** | ✅ **synchronisé** | ✅ **ignoré (pas sûr), fichier intact** |
 
 Cela ne décrit que ces fichiers, pas toutes les vidéos. Les chiffres, les détails et les scripts
 pour le rejouer sont dans le dossier de l'exemple.
@@ -53,7 +53,8 @@ un petit modèle de phrases multilingue : « Where did you put the keys? » et �
 clés ? » sont reconnues comme la même réplique.
 
 Quand trop peu de répliques correspondent (mauvaise référence, piste commentaire, montage
-différent), il **refuse** et ne touche pas au fichier.
+différent), il **ignore le fichier (pas sûr)** et n'y
+touche pas.
 
 ## Exemple
 
@@ -140,7 +141,8 @@ réplique, en bleu ce qui est calé, en orange ce qui est décalé, en vert ce q
 
 ### Garde-fous
 
-- Moins de 25 % des répliques ancrées : **refusé**, la référence ne dit pas la même chose.
+- Moins de 25 % des répliques ancrées : **ignoré (pas sûr)**, le fichier n'est pas modifié : la
+  référence ne dit pas la même chose.
 - Toutes les corrections sous 0,5 s : le fichier **n'est pas modifié**. C'est l'écart naturel
   entre deux langues, pas un problème de synchro.
 - Des répliques qui se chevauchent dans le fichier lui-même (un filigrane, deux personnages) ne
@@ -173,11 +175,11 @@ langues ou un autre matériel, ils seront différents.
 | alass | 84 / 105 | 10, aucun signalé |
 
 **Cas invalides.** Sur 11 cas avec une piste commentaire ou une piste partielle comme
-référence, SemanticSubSync a refusé ceux où il aurait fait des dégâts :
+référence, SemanticSubSync a ignoré (pas sûr) ceux où il aurait fait des dégâts :
 
 - la couverture des répliques ancrées y était de 0,07 au plus, contre 0,32 à 0,82 sur les cas
   valides ;
-- le seuil de refus (0,25) se situe dans cet écart ; une autre vidéothèque peut demander une
+- le seuil (0,25) se situe dans cet écart ; une autre vidéothèque peut demander une
   autre valeur (`--min-coverage`).
 
 **Outils basés sur l'audio seul,** pour comparaison, sur le même genre de déformations :
@@ -210,7 +212,7 @@ sont rarement découpées de la même façon : même une paire synchronisée res
 |---|---|---|
 | Laissé tel quel (déjà synchronisé) | 66 | 92,8 % / 97,4 % |
 | Corrigé | 44 | avant : 1,9 % / 4,5 % — après : 82,7 % / 91,5 % |
-| Refusé | 4 | — |
+| Ignoré (pas sûr) | 4 | — |
 
 - **Paires corrigées :** elles couvrent les cas pour lesquels l'outil est fait : 25 i/s contre
   23,976 i/s (3 épisodes), coupes et scènes ajoutées ou retirées (3 à 6 segments, dont une
@@ -221,7 +223,7 @@ sont rarement découpées de la même façon : même une paire synchronisée res
   - 2 des 44 finissent légèrement en dessous du fichier non modifié (un sous-titre grec, dans
     les deux sens : 95,7 % puis 93,2 % à 1 s), pour une correction d'environ 0,5 s, juste
     au-dessus du seuil.
-- **Refus :** 2 fichiers dans les deux sens, dont le contenu appartient à un autre épisode que
+- **Ignorés (pas sûr) :** 2 fichiers dans les deux sens, dont le contenu appartient à un autre épisode que
   celui de leur nom (ni le dialogue ni la durée ne correspondent à la référence).
 - **Lignes en trop :** 170 n'avaient pas de place dans la vidéo, dont 140 correspondent au
   récapitulatif de 35 répliques d'une version, recalée sur des versions qui ne l'ont pas.
@@ -275,7 +277,7 @@ pistes forcées. `--track` choisit une piste par son index ffprobe.
 - Le sous-titre d'entrée n'est jamais modifié. Le résultat va par défaut dans
   `SOUS-TITRE.synced.srt` (`-o` pour le changer).
 - Déjà synchronisé : rien n'est écrit.
-- Code de sortie : `0` corrigé ou déjà synchronisé, `1` refusé, `2` erreur.
+- Code de sortie : `0` corrigé ou déjà synchronisé, `1` ignoré (pas sûr, rien n'est écrit), `2` erreur.
 - `--json` affiche la décision et les statistiques (couverture, segments, décalages, répliques
   retirées, lignes en trop gardées).
 

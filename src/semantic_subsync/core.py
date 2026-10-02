@@ -342,10 +342,11 @@ MIN_COVERAGE = 0.25    # share of target cues anchored; below it the reference d
 def resync(tgt, ref, p=P, embed_fn=None, min_coverage=MIN_COVERAGE):
     """`sync` plus the decision. Returns (status, cues, stats), status being one of
     "corrected" (cues = re-timed target), "in_sync" (cues = None: nothing to change) or
-    "refused" (cues = None: the reference cannot be trusted for this target)."""
+    "unsure" (cues = None: too few lines match the reference, so it cannot be trusted for
+    this target and the file is left alone)."""
     out, st = sync(tgt, ref, p, embed_fn)
     if out is None or (st.get("coverage") or 0) < min_coverage:
-        return "refused", None, st
+        return "unsure", None, st
     if len(out) == len(tgt) and all(abs(a[0] - b[0]) < 1e-6 and abs(a[1] - b[1]) < 1e-6 for a, b in zip(out, tgt)):
         return "in_sync", None, st
     return "corrected", out, st

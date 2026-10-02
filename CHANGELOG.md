@@ -15,12 +15,19 @@ All notable changes to this project are documented here. The format follows
 - `tools/smoke_image.py`: the release checks that each image reads an embedded subtitle.
 
 ### Changed
+- The decision "refused" is now "unsure" (too few lines match the reference, the file is left
+  alone): `core.resync`, logs, `state.db`, `--json`, `cli.EXIT_UNSURE` (exit status 1, unchanged)
+  and the documentation.
 - Worker: each log line also holds the hashes of the synced subtitle and of the correction, and
   the settings. `state.db` also keeps `seg`.
 - CI: one job per architecture (x86-64 on Python 3.11, ARM64 on 3.12), no Docker build on
   pushes (the release builds and checks the images), not run for documentation-only changes;
   actions updated to their Node 24 versions.
 - README: shorter paragraphs, lists and sub-headings.
+
+### Removed
+- Worker: upgrade code for earlier versions (removal of `.semsync.` side files, new columns added
+  to an existing `state.db`).
 
 ### Fixed
 - Worker: the offsets applied per segment (`seg`) were missing from the log since 0.10.0.

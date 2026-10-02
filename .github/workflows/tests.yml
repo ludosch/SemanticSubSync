@@ -60,7 +60,7 @@ jobs:
           uv run --extra model semantic-subsync 3-wrong-reference/downloaded.fr.srt 3-wrong-reference/reference.commentary.srt -o "$RUNNER_TEMP/out3.srt"
           status=$?
           set -e
-          test "$status" -eq 1                      # the wrong reference must be refused
+          test "$status" -eq 1                      # the wrong reference: unsure, nothing written
           test ! -e "$RUNNER_TEMP/out3.srt"
           uv run python - <<'EOF'
           import os

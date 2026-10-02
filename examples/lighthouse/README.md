@@ -15,7 +15,7 @@ during a storm), so that the example can be shared freely. It plays the part of 
 |---|---|---|
 | [`1-missing-scene`](1-missing-scene) | The French was timed on a 25 fps TV broadcast (the video is 23.976 fps) that lacks a 70-second scene: it drifts, then jumps | Corrected |
 | [`2-extra-scene`](2-extra-scene) | The other way round: the French was timed on the extended edition, the video is the shorter cut; every line after the extra scene is 70 s late | Corrected |
-| [`3-wrong-reference`](3-wrong-reference) | The French of situation 1, but the reference is the director's commentary track: in sync with the video, but it says something else | Refused |
+| [`3-wrong-reference`](3-wrong-reference) | The French of situation 1, but the reference is the director's commentary track: in sync with the video, but it says something else | Left alone (unsure) |
 
 ## Results
 
@@ -29,7 +29,7 @@ within 300 ms of its true position.
 | ffsubsync 0.5.1 | ❌ 52 %, 70 s off | ❌ 52 %, 70 s off | ❌ changes the file (up to 36 s) |
 | ffsubsync 0.5.1 `--split-penalty 5` | ❌ 52 %, 81 s off | ❌ 52 %, 61 s off | ❌ changes the file (up to 96 s) |
 | LAPSE 2.2.3 | ❌ 52 %, 70 s off, verdict "solid" | ❌ 52 %, 70 s off, verdict "solid" | ❌ changes the file (up to 75 s), verdict "solid" |
-| **SemanticSubSync 0.9.0** | ✅ **100 %** | ✅ **100 %** | ✅ **refused, file left alone** |
+| **SemanticSubSync 0.9.0** | ✅ **100 %** | ✅ **100 %** | ✅ **unsure, file left alone** |
 
 Why the tools differ:
 
@@ -41,7 +41,7 @@ Why the tools differ:
   LAPSE even rates its output "solid".
 - **SemanticSubSync** reads what the lines say. A scene missing on either side is just a place
   where the matches jump, and a reference that says something else gives almost no matches,
-  hence the refusal.
+  hence "unsure" and the file left alone.
 
 ## Run it yourself
 
