@@ -13,7 +13,7 @@ import onnx
 from onnx import TensorProto, numpy_helper
 from onnxruntime.quantization import QuantType, quantize_dynamic
 
-from semantic_subsync.core import MODEL
+from semantic_subsync.core import MODELS
 
 ONNX = "model_optimized.onnx"
 
@@ -37,7 +37,7 @@ def to_fp32(model):
 
 def main(out):
     from fastembed import TextEmbedding
-    src = str(TextEmbedding(MODEL).model._model_dir)    # downloads the FP16 model if needed
+    src = str(TextEmbedding(MODELS["minilm"]["repo"]).model._model_dir)    # downloads the FP16 model if needed
     os.makedirs(out, exist_ok=True)
     for f in os.listdir(src):                      # tokenizer and config files, as is
         if f != ONNX and os.path.isfile(os.path.join(src, f)):
