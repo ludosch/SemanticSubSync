@@ -1,17 +1,16 @@
 # Bazarr integration
 
 Every subtitle that [Bazarr](https://www.bazarr.media/) downloads is checked in the background
-against the text subtitle embedded in the video. When it is out of sync, a corrected copy is
-written next to it. The downloaded file itself is never modified, so Bazarr keeps managing it
-(upgrades, deletion) as usual.
+against the text subtitle embedded in the video. When it is out of sync, it is corrected, and
+the downloaded version is kept beside it as an extra track to switch back to.
 
 ```
 Bazarr ──(custom post-processing)──> enqueue.py ──> /data/.semsync/queue/*.job
                                                           │
                               semantic-subsync-worker <───┘
                                           │
-                 Movie.fr.srt  (downloaded, untouched)
-                 Movie.semsync.fr.srt  (written only when a correction is needed)
+                 Movie.fr.srt           corrected (keeps the name Bazarr gave it)
+                 Movie.replaced.fr.srt  the download, kept only when a correction was made
 ```
 
 Bazarr has no plugin system for synchronization engines: its built-in sync (ffsubsync) is
@@ -19,12 +18,37 @@ hard-wired. Its **custom post-processing** command is the supported extension po
 integration uses it. The command only drops a small job file; the work runs in a separate
 container, so Bazarr is never slowed down and does not need the model.
 
-## Why a separate file?
+## What the player shows
 
-Media servers such as Jellyfin show `Movie.semsync.fr.srt` as an extra French subtitle titled
-"semsync", next to the original. You can compare both, and nothing is lost if a correction is
-wrong. A stale `.semsync` file is removed when a newer download turns out to be in sync or
-cannot be checked.
+Jellyfin (and most media servers) read the words between the video's name and `.srt`: the
+language, `hi` / `sdh` / `cc` for hearing impaired, `forced`, and any other word as the title of
+the track. With the default output mode:
+
+| File | Shown in Jellyfin |
+|---|---|
+| `Movie.fr.srt` | French - SUBRIP - External (the correction, listed first) |
+| `Movie.replaced.fr.srt` | replaced - French - SUBRIP - External |
+
+If a correction is wrong, pick the "replaced" track. `SEMSYNC_OUTPUT=side` keeps the download
+under its own name instead and writes the correction as `Movie.resync.fr.srt` ("resync -
+French"). A media server may only see a new file after its next library scan.
+
+When Bazarr downloads a new subtitle over a corrected one (an upgrade, a manual search), the
+new file is checked again and the old `.replaced` file is replaced or removed. When a subtitle
+needs no correction (any more), it keeps its name and no extra file is left.
+
+## What is checked
+
+- Each downloaded subtitle on its own: a video with `fr`, `fr.hi` and `en` subtitles gets three
+  checks.
+- A subtitle is skipped (`redundant`) when the video already embeds a **text** subtitle of the
+  same language and kind (plain, hearing impaired or forced): the video has it already. An
+  image subtitle (PGS, VobSub) does not count, since many players cannot show it without
+  converting the video.
+- The reference is the fullest embedded text subtitle, in any language: an English download on
+  a release that only embeds French is checked against the French.
+- A subtitle already processed is not processed again (`unchanged`) unless its content, the
+  video (size or date) or the output mode changed: see [State](#state).
 
 ## Setup
 
@@ -81,16 +105,19 @@ On a small CPU, make the int8 model once with
 [`tools/quantize_model.py`](../../tools/quantize_model.py), put it in `./models/minilm-int8`,
 and add `SEMSYNC_MODEL_DIR=/models/minilm-int8`.
 
-`SEMSYNC_EXTRA_LINES=drop` removes every line the video has no room for (a translator credit,
-a recap or a scene that your video lacks). By default (`keep`) such lines stay where nothing is
-shown nor said, a block of consecutive lines whole or not at all.
+| Variable | Default | |
+|---|---|---|
+| `SEMSYNC_OUTPUT` | `replace` | `replace`: the correction takes the subtitle's name, the download is kept as `.replaced`. `side`: the download is left as is, the correction is written as `.resync` |
+| `SEMSYNC_EXTRA_LINES` | `drop` | Lines the video has no room for (a translator credit, a recap or a scene that your video lacks) are removed. `keep` leaves them where nothing is shown nor said, a block of consecutive lines whole or not at all |
 
 The worker runs at the lowest CPU priority (`nice 19`), so a media server transcoding at the
 same time keeps priority. It unloads the model when the queue is empty.
 
 ### 5. Existing subtitles (optional)
 
-Queue every external `.srt` that sits next to its video:
+Queue every external `.srt` that sits next to its video. Subtitles already processed and
+unchanged are skipped in a fraction of a second, so it can be run again at any time (after an
+upgrade, or from a nightly scheduled task):
 
 ```bash
 docker exec semantic-subsync semantic-subsync-worker backfill /data/media
@@ -102,15 +129,39 @@ One JSON line per job in `/data/.semsync/semsync.log`:
 
 | `status` | Meaning |
 |---|---|
-| `corrected` | A `.semsync` file was written; `seg` lists the offsets applied |
+| `corrected` | Corrected; `seg` lists the offsets applied |
 | `in_sync` | Nothing to do |
 | `refused` | The embedded track does not match this subtitle (coverage too low) |
 | `no_reference` | No embedded text subtitle with at least 20 lines |
-| `skipped` | Missing file, not an `.srt`, or one of our own outputs |
+| `redundant` | The video embeds a text subtitle of the same language and kind |
+| `unchanged` | Already processed, nothing changed since |
+| `skipped` | Missing file, not an `.srt`, or one of our own files (`.replaced`, `.resync`) |
 | `error` | Unexpected failure; the job is moved to `/data/.semsync/failed` |
+
+## State
+
+`/data/.semsync/state.db` (SQLite) keeps one row per downloaded subtitle, which is how the
+worker recognises its own corrections and the files it already checked: a file name alone
+cannot tell. List it with:
+
+```bash
+docker exec semantic-subsync semantic-subsync-worker status            # one line per subtitle + counts
+docker exec semantic-subsync semantic-subsync-worker status "S04E02"   # filter on the paths
+docker exec semantic-subsync semantic-subsync-worker status --fields  # what each column means
+```
+
+Columns: the subtitle and video paths, language and kind; the decision (`status`, `reason`,
+`reference`, `coverage`, `segments`, `max_abs_offset`, `dropped`); the hash and size of the
+synced download (`input_sha256`, `input_size`); the output (`output_mode`, `output_path`,
+`output_sha256`, `replaced_path`); the video's size and date; the engine version and settings;
+`origin`, `score`, `secs`, `processed_at` and `runs`.
+
+Deleting the file only makes the worker check everything again.
 
 ## Test one pair by hand
 
 ```bash
 docker exec semantic-subsync semantic-subsync-worker one "/data/media/Movie/Movie.mkv" "/data/media/Movie/Movie.fr.srt"
 ```
+
+`one --force` checks it again even if nothing changed.

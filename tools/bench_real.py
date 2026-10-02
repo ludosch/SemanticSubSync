@@ -105,7 +105,7 @@ def main():
         rec = measure(corpus, ep, t, r); rs.append(rec)
         out.write(json.dumps(rec, default=lambda o: o.item(), ensure_ascii=False) + "\n"); out.flush()
         print(ep, rec["tgt_lang"], "<-", rec["ref_lang"], rec["status"], rec.get("before"), "->", rec.get("after"), flush=True)
-    print(json.dumps(summary(rs), indent=1))
+    print(json.dumps(summary(rs), indent=1, default=lambda o: o.item()))
 
 
 if __name__ == "__main__":

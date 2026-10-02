@@ -6,18 +6,30 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-02
+
 ### Added
+- Worker: `state.db` (SQLite) remembers every downloaded subtitle it checked (hashes, video size
+  and date, decision, output). A subtitle already processed is skipped (`unchanged`) unless its
+  content, the video or the output mode changed; `one --force` checks it again. `status` lists
+  what it knows (`--fields` describes the columns).
+- Worker: a downloaded subtitle is skipped (`redundant`) when the video already embeds a text
+  subtitle of the same language and kind (plain, hearing impaired, forced).
 - `--lang` and reading of non-UTF-8 subtitles in the code page of their language (from the
   file name or `--lang`); Cyrillic, Greek, Arabic or Chinese files were read as gibberish.
 - `tools/bench_real.py` and `pytest -m corpus`: measurement on a local folder of real
   downloaded subtitles; README section "Real-world datasets" with the author's figures.
 - README: the languages of the model.
-- `--extra-lines keep|drop` (worker: `SEMSYNC_EXTRA_LINES`) for the lines the video has no room
-  for (a credit, a recap or a scene it lacks). `keep`, the default, leaves them only where
-  nothing is shown nor said, consecutive lines as a block, whole or not at all; `drop` removes
-  them all. `--json` reports `kept_extra`.
+- `--extra-lines drop|keep` (worker: `SEMSYNC_EXTRA_LINES`) for the lines the video has no room
+  for (a credit, a recap or a scene it lacks). `drop`, the default, removes them all; `keep`
+  leaves them only where nothing is shown nor said, consecutive lines as a block, whole or not
+  at all. `--json` reports `kept_extra`.
 
 ### Changed
+- Worker: by default (`SEMSYNC_OUTPUT=replace`) a corrected subtitle keeps the name of the
+  download, which is kept as `<video>.replaced.<lang>.srt`, an extra track in media servers.
+  `SEMSYNC_OUTPUT=side` writes the correction as `<video>.resync.<lang>.srt` instead. Files
+  named `.semsync.` by earlier versions are removed when their subtitle is checked again.
 - Lines of a scene that the video does not have are no longer stacked on the lines around
   the cut, and lines that would start before 0 s (a "Previously on" recap the video lacks) are
   no longer written at 00:00:00: see `--extra-lines`. `--json` reports how many lines were
@@ -29,6 +41,7 @@ All notable changes to this project are documented here. The format follows
   reference), drawn by `examples/lighthouse/plot.py`.
 
 ### Fixed
+- `tools/bench_real.py` crashed when printing its summary (numpy integers).
 - A subtitle in sync whose own lines overlap (e.g. a watermark) was reported as corrected and
   rewritten. Only overlaps created by a correction are trimmed now.
 

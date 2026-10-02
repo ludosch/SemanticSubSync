@@ -29,8 +29,8 @@ def parser():
                          "(default: the tag in its name, as in Movie.ru.srt)")
     ap.add_argument("--extra-lines", choices=("keep", "drop"), default=core.P["extra_lines"],
                     help="lines the video has no room for (a credit, a recap or a scene it lacks): "
-                         "keep them where nothing is shown nor said, a block of consecutive lines "
-                         "whole or not at all (default), or drop them all")
+                         "drop them all (default), or keep them where nothing is shown nor said, "
+                         "a block of consecutive lines whole or not at all")
     ap.add_argument("--min-coverage", type=float, default=core.MIN_COVERAGE, metavar="X",
                     help=f"refuse below this share of anchored lines (default {core.MIN_COVERAGE})")
     ap.add_argument("--json", action="store_true", help="print the decision and statistics as JSON")

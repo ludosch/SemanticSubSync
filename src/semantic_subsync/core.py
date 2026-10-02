@@ -21,8 +21,8 @@ P = dict(topk=3, min_sim=0.55, nb=7, max_dev=1.0, max_offset=900.0,
          tgt_merge=True, # also match 2 consecutive target cues (a sentence split in two)
          min_seg=60.0,   # s: a segment shorter than this is a mis-match, not a cut -> merged into its neighbour
          deadband=0.5,   # s: a single constant correction smaller than this = natural FR/VO bias -> leave file untouched
-         extra_lines="keep")  # lines the video has no room for (a scene or a recap it lacks, a credit):
-                              # "keep" where the output and the reference are both silent, else drop; "drop" always
+         extra_lines="drop")  # lines the video has no room for (a scene or a recap it lacks, a credit):
+                              # "drop" always (default); "keep" where the output and the reference are both silent
 # Drift only comes from frame-rate conversions, i.e. a handful of ratios for the whole file.
 FPS = [23.976, 24.0, 25.0, 29.97, 30.0]
 DRIFTS = sorted({round(a / b - 1, 6) for a in FPS for b in FPS if a / b - 1 and abs(a / b - 1) < 0.3} | {0.0})
@@ -250,7 +250,7 @@ def sync(tgt, ref, p=P, embed_fn=None):
             if a[1] > b[0] and a[0] < b[0] and not (tgt[i][1] > tgt[j][0] and tgt[i][0] < tgt[j][0]):
                 a[1] = max(a[0] + 0.3, b[0] - 0.04)
         out = [c for c, _ in moved]
-        if p.get("extra_lines", "keep") == "keep":
+        if p.get("extra_lines", "drop") == "keep":
             # Extra lines are kept only where nothing is shown and nothing is said: they never
             # overlap another line, nor dialogue that the reference has. Consecutive extra lines
             # (less than 10 s apart) form a block, kept whole or not at all: a credit fits in a

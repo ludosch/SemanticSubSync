@@ -107,10 +107,9 @@ line, blue in sync, orange out of sync, green fixed):
    reference says nothing belongs to a scene the video does not have. So does a line that
    would start before 0 s, typically a "Previously on" recap that the video lacks. Such extra
    lines can be useful (the translator's credit) or not (a recap the video does not have):
-   by default they are kept only where nothing is shown nor said, consecutive ones as a block,
-   whole or not at all, so a credit stays and a recap or a whole scene goes. They never
-   overlap another line. `--extra-lines drop` removes them all. The result is always in time
-   order.
+   by default they are all removed. `--extra-lines keep` keeps them only where nothing is shown
+   nor said, consecutive ones as a block, whole or not at all, so a credit stays and a recap or
+   a whole scene goes; they never overlap another line. The result is always in time order.
 5. Guards:
    - fewer than 25 % of lines anchored: **refused**, the reference does not say the same thing;
    - every correction smaller than 0.5 s: the file is **left untouched** (this is the natural gap
@@ -179,9 +178,10 @@ stays below 100 %.
   95.7 % then 93.2 % at 1 s), for a correction of about 0.5 s, just above the deadband.
 - The 4 refusals are 2 files in both directions, whose content belongs to another episode than
   their name says (the dialogue and the duration do not match the reference).
-- 170 extra lines had no room in the video. With the default `--extra-lines keep`, 9 isolated
-  ones stayed in silences and 161 were left out, 140 of them being the 35-line recap of one
-  release, aligned on releases without it. Otherwise they would have been stacked at 00:00:00.
+- 170 extra lines had no room in the video, 140 of them being the 35-line recap of one release,
+  aligned on releases without it. Measured with `--extra-lines keep`: 9 isolated ones stayed in
+  silences and 161 were left out; the default (`drop`) removes all 170. Before this, they would
+  have been stacked at 00:00:00.
 - No line came out of time order or before 0 s, and no overlap longer than 0.3 s was created.
 - 47 of the 66 files were not UTF-8 (see [Usage](#usage)).
 
@@ -206,8 +206,8 @@ Each [release](https://github.com/ludosch/SemanticSubSync/releases) also carries
 package and a Docker image for amd64 and arm64, to load with `docker load`:
 
 ```bash
-gh release download v0.9.0 -R ludosch/SemanticSubSync -p "*docker-amd64*"
-docker load -i semantic-subsync-0.9.0-docker-amd64.tar.gz
+gh release download v0.10.0 -R ludosch/SemanticSubSync -p "*docker-amd64*"
+docker load -i semantic-subsync-0.10.0-docker-amd64.tar.gz
 ```
 
 ## Usage
@@ -225,8 +225,8 @@ semantic-subsync SUBTITLE REFERENCE [-o OUTPUT] [--track INDEX] [--lang CODE] [-
 - Exit status: `0` corrected or already in sync, `1` refused, `2` error.
 - `--json` prints the decision and the statistics (coverage, segments, offsets, lines dropped,
   extra lines kept).
-- `--extra-lines drop` removes the lines the video has no room for (see
-  [How it works](#how-it-works)); the default `keep` leaves them where nothing is shown nor said.
+- The lines the video has no room for are removed (see [How it works](#how-it-works));
+  `--extra-lines keep` leaves them where nothing is shown nor said.
 - Files that are not UTF-8 (most older downloads) are read in the code page of their language,
   taken from the file name (`Movie.ru.srt`, `Show.S01E01.pt-BR.srt`) or from `--lang ru`.
   Without either, a Western code page is assumed unless the text then looks like another
@@ -248,7 +248,8 @@ The engine knows nothing about media servers or subtitle managers. Integrations 
 [`integrations/`](integrations):
 
 - [**Bazarr**](integrations/bazarr/README.md): each downloaded subtitle is checked automatically
-  by a background worker, and a corrected copy is written next to the video when needed.
+  by a background worker and corrected when needed; the downloaded version stays available as
+  an extra track.
 
 ## Model
 

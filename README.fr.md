@@ -113,11 +113,11 @@ réplique, en bleu ce qui est calé, en orange ce qui est décalé, en vert ce q
    tomberait là où la référence ne dit rien appartient à une scène absente de la vidéo. De même
    pour une réplique qui commencerait avant 0 s, typiquement un « Précédemment dans… » que la
    vidéo n'a pas. Ces lignes en trop peuvent être utiles (le crédit du traducteur) ou non (un
-   récapitulatif absent de la vidéo) : par défaut, elles ne sont gardées que là où rien n'est
-   affiché ni dit, les lignes consécutives formant un bloc gardé en entier ou pas du tout. Un
-   crédit reste, un récapitulatif ou une scène entière part. Elles ne chevauchent jamais une
-   autre ligne. `--extra-lines drop` les retire toutes. Le résultat est toujours dans l'ordre
-   chronologique.
+   récapitulatif absent de la vidéo) : par défaut, elles sont toutes retirées.
+   `--extra-lines keep` ne les garde que là où rien n'est affiché ni dit, les lignes
+   consécutives formant un bloc gardé en entier ou pas du tout : un crédit reste, un
+   récapitulatif ou une scène entière part, et elles ne chevauchent jamais une autre ligne. Le
+   résultat est toujours dans l'ordre chronologique.
 5. Garde-fous :
    - moins de 25 % des répliques ancrées : **refusé**, la référence ne dit pas la même chose ;
    - toutes les corrections sous 0,5 s : le fichier **n'est pas modifié** (c'est l'écart naturel
@@ -192,10 +192,11 @@ sont rarement découpées de la même façon : même une paire synchronisée res
   seuil.
 - Les 4 refus sont 2 fichiers dans les deux sens, dont le contenu appartient à un autre épisode
   que celui de leur nom (ni le dialogue ni la durée ne correspondent à la référence).
-- 170 lignes en trop n'avaient pas de place dans la vidéo. Avec `--extra-lines keep` (par
-  défaut), 9 lignes isolées sont restées dans des silences et 161 ont été retirées, dont 140
-  correspondent au récapitulatif de 35 répliques d'une version, recalée sur des versions qui ne
-  l'ont pas. Sinon, elles auraient été empilées à 00:00:00.
+- 170 lignes en trop n'avaient pas de place dans la vidéo, dont 140 correspondent au
+  récapitulatif de 35 répliques d'une version, recalée sur des versions qui ne l'ont pas. Mesuré
+  avec `--extra-lines keep` : 9 lignes isolées sont restées dans des silences et 161 ont été
+  retirées ; par défaut (`drop`), les 170 sont retirées. Auparavant, elles auraient été empilées
+  à 00:00:00.
 - Aucune réplique n'est sortie hors de l'ordre chronologique ou avant 0 s, et aucun
   chevauchement de plus de 0,3 s n'a été créé.
 - 47 des 66 fichiers n'étaient pas en UTF-8 (voir [Utilisation](#utilisation)).
@@ -221,8 +222,8 @@ Chaque [release](https://github.com/ludosch/SemanticSubSync/releases) contient a
 Python et une image Docker pour amd64 et arm64, à charger avec `docker load` :
 
 ```bash
-gh release download v0.9.0 -R ludosch/SemanticSubSync -p "*docker-amd64*"
-docker load -i semantic-subsync-0.9.0-docker-amd64.tar.gz
+gh release download v0.10.0 -R ludosch/SemanticSubSync -p "*docker-amd64*"
+docker load -i semantic-subsync-0.10.0-docker-amd64.tar.gz
 ```
 
 ## Utilisation
@@ -241,8 +242,8 @@ semantic-subsync SOUS-TITRE REFERENCE [-o SORTIE] [--track INDEX] [--lang CODE] 
 - Code de sortie : `0` corrigé ou déjà synchronisé, `1` refusé, `2` erreur.
 - `--json` affiche la décision et les statistiques (couverture, segments, décalages, répliques
   retirées, lignes en trop gardées).
-- `--extra-lines drop` retire les lignes pour lesquelles la vidéo n'a pas de place (voir
-  [Fonctionnement](#fonctionnement)) ; par défaut, `keep` les laisse là où rien n'est affiché
+- Les lignes pour lesquelles la vidéo n'a pas de place sont retirées (voir
+  [Fonctionnement](#fonctionnement)) ; `--extra-lines keep` les laisse là où rien n'est affiché
   ni dit.
 - Les fichiers qui ne sont pas en UTF-8 (la plupart des téléchargements anciens) sont lus dans
   la page de code de leur langue, prise dans le nom du fichier (`Film.ru.srt`,
@@ -266,8 +267,8 @@ Le moteur ne connaît ni serveur multimédia ni gestionnaire de sous-titres. Les
 dans [`integrations/`](integrations) :
 
 - [**Bazarr**](integrations/bazarr/README.md) (en anglais) : chaque sous-titre téléchargé est
-  vérifié automatiquement par un worker en arrière-plan, et une copie corrigée est écrite à côté
-  de la vidéo si besoin.
+  vérifié automatiquement par un worker en arrière-plan et corrigé si besoin ; la version
+  téléchargée reste disponible comme piste supplémentaire.
 
 ## Modèle
 

@@ -52,7 +52,7 @@ def test_video_reference_uses_fullest_embedded_track(files, monkeypatch, capsys)
     video.write_bytes(b"")
     seen = {}
 
-    def fake_refs(v, wd, streams=None):
+    def fake_refs(v, wd, streams=None, tracks=None):
         seen["streams"] = streams
         return [(ref_cues(files["base"][:25]), "#4 eng Signs"), (ref_cues(files["base"]), "#3 eng English")]
     monkeypatch.setattr(media, "embedded_references", fake_refs)
@@ -67,7 +67,7 @@ def test_video_without_text_subtitle(files, monkeypatch, capsys):
     core.write(files["sub"], tgt_cues(files["base"]))
     video = files["tmp"] / "Movie.mkv"
     video.write_bytes(b"")
-    monkeypatch.setattr(media, "embedded_references", lambda v, wd, streams=None: [])
+    monkeypatch.setattr(media, "embedded_references", lambda v, wd, streams=None, tracks=None: [])
     assert cli.main([files["sub"], str(video)]) == cli.EXIT_ERROR
     assert "no usable embedded text subtitle" in capsys.readouterr().err
 
