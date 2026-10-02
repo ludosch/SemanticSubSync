@@ -93,9 +93,10 @@ def main(folder):
     g = Svg("1. Offset: the French is 3 s late")
     yr, ye, yf = g.rows(labels)
     late = lambda t: min(t + 3, SECONDS)
-    g.marks(yr, [(a, b, SYNC) for a, b in lines])
-    g.marks(ye, [(late(a), late(b), OFF) for a, b in lines if b + 3 <= SECONDS])
-    g.marks(yf, [(a, b, FIXED) for a, b in lines])
+    shown = [l for l in lines if l[1] + 3 <= SECONDS]   # same lines on the 3 strips: none pushed past the end
+    g.marks(yr, [(a, b, SYNC) for a, b in shown])
+    g.marks(ye, [(late(a), late(b), OFF) for a, b in shown])
+    g.marks(yf, [(a, b, FIXED) for a, b in shown])
     for l in picks:
         g.arrow(late(mid(l)), ye, mid(l), yf)
     g.save(os.path.join(folder, "fix-offset.svg"))

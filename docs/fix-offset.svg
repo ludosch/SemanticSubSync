@@ -16,7 +16,6 @@
 <rect x="499.0" y="34" width="19.5" height="16" rx="2" fill="#2f6fdb"/>
 <rect x="529.7" y="34" width="23.9" height="16" rx="2" fill="#2f6fdb"/>
 <rect x="574.4" y="34" width="31.9" height="16" rx="2" fill="#2f6fdb"/>
-<rect x="616.7" y="34" width="32.4" height="16" rx="2" fill="#2f6fdb"/>
 <rect x="173.0" y="78" width="29.5" height="16" rx="2" fill="#e07b39"/>
 <rect x="221.0" y="78" width="32.4" height="16" rx="2" fill="#e07b39"/>
 <rect x="274.6" y="78" width="31.5" height="16" rx="2" fill="#e07b39"/>
@@ -39,7 +38,6 @@
 <rect x="499.0" y="122" width="19.5" height="16" rx="2" fill="#2f9e6e"/>
 <rect x="529.7" y="122" width="23.9" height="16" rx="2" fill="#2f9e6e"/>
 <rect x="574.4" y="122" width="31.9" height="16" rx="2" fill="#2f9e6e"/>
-<rect x="616.7" y="122" width="32.4" height="16" rx="2" fill="#2f9e6e"/>
 <line x1="290.3" y1="96" x2="249.0" y2="119" stroke="#2f9e6e" stroke-width="2" marker-end="url(#arrow)"/>
 <line x1="470.7" y1="96" x2="429.5" y2="119" stroke="#2f9e6e" stroke-width="2" marker-end="url(#arrow)"/>
 <line x1="582.9" y1="96" x2="541.6" y2="119" stroke="#2f9e6e" stroke-width="2" marker-end="url(#arrow)"/>
