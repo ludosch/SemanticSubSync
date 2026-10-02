@@ -22,9 +22,11 @@ PLUGIN = {
         "Re-times the external subtitles of movies and episodes on the text subtitle embedded in "
         "the video, by matching lines on meaning with a small multilingual sentence model. Handles "
         "offsets, frame-rate changes, cuts and inserted scenes; leaves the file alone when unsure. "
-        "\"Sync subtitles\" in the menu of a movie or an episode, and automatic in the libraries "
-        "chosen on the plugin page. The engine is installed in the plugin's data folder on first "
-        "use. Needs write access to the media folders."),
+        "New subtitles are processed automatically in every library from the installation on (a "
+        "catch-up of the existing ones is an option), and \"Sync subtitles\" in the menu of a "
+        "movie or an episode runs it at once. The engine and its model (about 410 MB) are installed "
+        "in the plugin's data folder in the background after the restart. Needs write access to the "
+        "media folders."),
     "owner": "ludosch",
     "category": "Metadata",
 }

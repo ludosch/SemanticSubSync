@@ -30,7 +30,7 @@ new video, or new / changed .srt ──> plugin ──> semantic-subsync-worker 
 In Jellyfin: **Dashboard > Plugins > Repositories**, add
 
 ```
-https://raw.githubusercontent.com/ludosch/SemanticSubSync/main/integrations/jellyfin/manifest.json
+https://github.com/ludosch/SemanticSubSync/releases/latest/download/manifest.json
 ```
 
 then install **SemanticSubSync** from the **Catalog** and restart Jellyfin.

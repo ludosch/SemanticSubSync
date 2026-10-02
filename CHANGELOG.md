@@ -20,6 +20,10 @@ All notable changes to this project are documented here. The format follows
   The engine and its model (about 410 MB) are installed in the background a few minutes after
   Jellyfin starts, one installation at a time (a sync started meanwhile waits for it); the plugin
   page shows whether the engine is ready.
+  Each release carries the plugin (`jellyfin-plugin-semanticsubsync-X.Y.Z.zip`) and the plugin
+  repository manifest: add
+  `https://github.com/ludosch/SemanticSubSync/releases/latest/download/manifest.json` under
+  Dashboard > Plugins > Repositories.
 - Optional dependency set `static` (`pip install "semantic-subsync[static]"`): only what the
   default `static` model needs, without the `minilm` runtime.
 - Worker `prepare`: downloads and loads the sentence model now, so the first subtitle does not wait

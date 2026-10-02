@@ -1,7 +1,9 @@
 name: release
 
-# A tag vX.Y.Z builds the Python package and the Docker image (amd64 and arm64), and attaches
-# them to a GitHub release. Started by hand, it only builds them as workflow artifacts.
+# A tag vX.Y.Z builds the Python package, the Docker image (amd64 and arm64) and the Jellyfin
+# plugin, and attaches them to a GitHub release with the plugin repository manifest. Started by
+# hand, it only builds them as workflow artifacts.
+# The manifest is served as releases/latest/download/manifest.json, the URL Jellyfin is given.
 
 on:
   push:
@@ -59,9 +61,26 @@ jobs:
           path: ${{ env.FILE }}
           compression-level: 0
 
+  jellyfin:
+    needs: package
+    runs-on: ubuntu-24.04
+    env:
+      FILE: jellyfin-plugin-semanticsubsync-${{ needs.package.outputs.version }}.zip
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build the plugin (.NET SDK container, as for a local build)
+        run: |
+          docker run --rm -v "$PWD/integrations/jellyfin:/src" -w /src mcr.microsoft.com/dotnet/sdk:10.0 \
+            dotnet publish Jellyfin.Plugin.SemanticSubSync -c Release -o /src/artifacts
+          zip -j "$FILE" integrations/jellyfin/artifacts/Jellyfin.Plugin.SemanticSubSync.dll
+      - uses: actions/upload-artifact@v7
+        with:
+          name: jellyfin-plugin
+          path: ${{ env.FILE }}
+
   release:
     if: github.ref_type == 'tag'
-    needs: [package, docker]
+    needs: [package, docker, jellyfin]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -75,6 +94,10 @@ jobs:
         run: |
           awk -v v="${GITHUB_REF_NAME#v}" 'index($0, "## [" v "]") == 1 {on=1; next} /^## / {on=0} on' CHANGELOG.md > notes.md
           cat notes.md
+      - name: Jellyfin plugin repository manifest (Jellyfin reads the latest release's copy)
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          python3 tools/jellyfin_manifest.py "$v" "assets/jellyfin-plugin-semanticsubsync-$v.zip" notes.md > assets/manifest.json
       - env:
           GH_TOKEN: ${{ github.token }}
         run: gh release create "$GITHUB_REF_NAME" assets/* --title "$GITHUB_REF_NAME" --notes-file notes.md

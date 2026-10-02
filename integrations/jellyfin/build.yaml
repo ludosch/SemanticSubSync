@@ -7,8 +7,8 @@ overview: "Re-times downloaded subtitles on the subtitle embedded in the video, 
 description: >
   Re-times the external subtitles of movies and episodes on the text subtitle embedded in
   the video, by matching lines on meaning with a small multilingual sentence model. Handles
-  offsets, frame-rate changes and cuts; leaves the file alone when unsure. The engine is
-  installed in the plugin's data folder on first use. Needs write access to the media folders.
+  offsets, frame-rate changes and cuts; leaves the file alone when unsure. The engine and
+  its model are installed in the plugin's data folder in the background after the restart. Needs write access to the media folders.
 category: "Metadata"
 owner: "ludosch"
 artifacts:
