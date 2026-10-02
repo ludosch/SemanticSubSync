@@ -20,6 +20,7 @@ public sealed class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<SyncService>();
         serviceCollection.AddSingleton<IScheduledTask, SyncNewSubtitlesTask>();
         serviceCollection.AddHostedService<NewVideoListener>();
+        serviceCollection.AddHostedService<EngineWarmup>();
         serviceCollection.AddSingleton<IStartupFilter, MenuScriptStartupFilter>();
     }
 }

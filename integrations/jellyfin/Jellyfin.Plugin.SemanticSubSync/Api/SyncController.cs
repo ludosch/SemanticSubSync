@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
+using Jellyfin.Plugin.SemanticSubSync.Engine;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -38,14 +39,21 @@ public sealed class SyncController : ControllerBase
 
     private readonly ILibraryManager _library;
     private readonly SyncService _sync;
+    private readonly EngineInstaller _installer;
     private readonly ILogger<SyncController> _logger;
 
-    public SyncController(ILibraryManager library, SyncService sync, ILogger<SyncController> logger)
+    public SyncController(ILibraryManager library, SyncService sync, EngineInstaller installer, ILogger<SyncController> logger)
     {
         _library = library;
         _sync = sync;
+        _installer = installer;
         _logger = logger;
     }
+
+    /// <summary>Where the engine stands: not_installed, installing, ready or failed (shown on the plugin page).</summary>
+    [HttpGet("Status")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public ActionResult<EngineStatus> Status() => _installer.Status;
 
     /// <summary>Starts re-timing every external subtitle of a movie or an episode.</summary>
     [HttpPost("Items/{itemId}/Sync")]

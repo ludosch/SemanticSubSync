@@ -15,8 +15,10 @@
                     <p>Any movie or episode: <em>Sync subtitles</em> in its menu. Chosen libraries: automatically,
                         when a video is added and with the scheduled task <em>Re-time new subtitles</em>
                         (Dashboard &gt; Scheduled Tasks).</p>
-                    <p>The engine (about 700 MB with its model) is installed in the plugin's data folder on first
-                        use. Jellyfin needs write access to the media folders.</p>
+                    <p>The engine and its model (about 400 MB) are installed in the plugin's data folder, in the
+                        background, a few minutes after Jellyfin starts. Jellyfin needs write access to the media
+                        folders.</p>
+                    <p><strong>Engine:</strong> <span id="SssEngine">…</span></p>
                     <h3>Automatic in these libraries</h3>
                     <div id="SssLibraries"></div>
                     <div class="checkboxContainer checkboxContainer-withDescription">
@@ -52,7 +54,28 @@
         <script type="text/javascript">
             var SemanticSubSyncConfig = { pluginUniqueId: '32462154-51a5-4097-ac51-e453bb9dd38d' };
 
+            var SssStates = {
+                not_installed: 'not installed yet: it starts a few minutes after Jellyfin starts, or with the first sync',
+                installing: 'installing (a few minutes)…',
+                ready: 'ready',
+                failed: 'installation failed (see the Jellyfin log); tried again every hour and with the next sync'
+            };
+
+            function showEngine() {
+                var span = document.querySelector('#SssEngine');
+                if (!span || !span.offsetParent) {   // the page was left: stop asking
+                    return;
+                }
+                ApiClient.ajax({ type: 'GET', url: ApiClient.getUrl('SemanticSubSync/Status'), dataType: 'json' }).then(function (s) {
+                    span.textContent = (SssStates[s.State] || s.State) + (s.State === 'failed' && s.Message ? ': ' + s.Message : '');
+                    if (s.State === 'installing' || s.State === 'not_installed') {
+                        setTimeout(showEngine, 5000);
+                    }
+                });
+            }
+
             document.querySelector('#SemanticSubSyncConfigPage').addEventListener('pageshow', function () {
+                showEngine();
                 Dashboard.showLoadingMsg();
                 ApiClient.getPluginConfiguration(SemanticSubSyncConfig.pluginUniqueId).then(function (config) {
                     var chosen = config.Libraries || [];

@@ -28,6 +28,8 @@ Usage: semantic-subsync-worker run                          process the queue fo
        semantic-subsync-worker status [--fields] [WORD...] what state.db knows, for the paths containing every WORD
        semantic-subsync-worker history WORD...              every logged decision about the paths containing every
                                                             WORD, e.g. history TITLE S01E02 fr
+       semantic-subsync-worker prepare                      download and load the sentence model (SEMSYNC_MODEL) now,
+                                                            so the first subtitle does not wait for it
 """
 import gc, json, os, sys, time, traceback
 from semantic_subsync import __version__, core, media
@@ -325,6 +327,9 @@ def main():
         status(rest)
     elif cmd == "history" and rest:
         history(rest)
+    elif cmd == "prepare":
+        t0 = time.time(); core.embed(["ready"], model=core.DEFAULT_MODEL)
+        print(json.dumps({"status": "ready", "model": core.DEFAULT_MODEL, "secs": round(time.time() - t0, 1)}))
     else:
         sys.exit(__doc__)
 

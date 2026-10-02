@@ -14,15 +14,21 @@ All notable changes to this project are documented here. The format follows
   (none by default); never while someone is watching; then refreshes the item so the tracks show
   without a library scan. "Sync subtitles" in the menu of a movie or an episode runs it at once.
   The subtitles already in a library when it is chosen are left alone unless asked.
+  The engine and its model (about 410 MB) are installed in the background a few minutes after
+  Jellyfin starts, one installation at a time (a sync started meanwhile waits for it); the plugin
+  page shows whether the engine is ready.
 - Optional dependency set `static` (`pip install "semantic-subsync[static]"`): only what the
   default `static` model needs, without the `minilm` runtime.
+- Worker `prepare`: downloads and loads the sentence model now, so the first subtitle does not wait
+  for it.
 
 ### Changed
 - The `static` model is downloaded as its official float16 export (`onnx/model_fp16.onnx`, at a
   fixed revision of the model repository): about 220 MB instead of 434 MB, and half the memory for
-  its table. Same decisions as the float32 file on the benchmark and the real-world datasets. A
-  local copy (`SEMSYNC_MODEL_DIR/static`) can hold `model_fp16.onnx` or, as before,
-  `model.safetensors`.
+  its table. Same decisions as the float32 file on the benchmark and the real-world datasets.
+  It is downloaded directly and checked against its SHA-256, into `$HF_HOME/semantic-subsync`;
+  `huggingface-hub` is no longer a direct dependency. A local copy (`SEMSYNC_MODEL_DIR/static`)
+  can hold `model_fp16.onnx` or, as before, `model.safetensors`.
 
 ### Fixed
 - Worker: runs where `os.nice` does not exist (Windows) instead of failing at start.

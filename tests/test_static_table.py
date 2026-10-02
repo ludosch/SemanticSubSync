@@ -70,3 +70,21 @@ def test_local_copy_prefers_the_fp16_export_and_keeps_the_first_dims(tmp_path):
     v = emb(["hello world", "keys", ""])
     assert v.dtype == np.float32 and v.shape == (3, 4)
     assert np.allclose(v[0], table[[1, 2], :4].astype(np.float32).mean(0)) and (v[2] == 0).all()
+
+
+def test_download_checks_the_sha256_and_keeps_only_verified_files(tmp_path, monkeypatch):
+    import hashlib, io, os, urllib.request
+    monkeypatch.setenv("HF_HOME", str(tmp_path))
+    body, urls = b"table bytes", []
+    def urlopen(url, timeout):
+        urls.append(url); return io.BytesIO(body)
+    monkeypatch.setattr(urllib.request, "urlopen", urlopen)
+    m = dict(repo="org/model", revision="abc", sha256={"onnx/t.onnx": hashlib.sha256(body).hexdigest()})
+    path = core._download(m, "onnx/t.onnx")
+    assert open(path, "rb").read() == body and path.startswith(str(tmp_path / "semantic-subsync" / "org--model" / "abc"))
+    assert urls == ["https://huggingface.co/org/model/resolve/abc/onnx/t.onnx"]
+    assert core._download(m, "onnx/t.onnx") == path and len(urls) == 1          # kept: no second download
+    m["sha256"]["onnx/u.onnx"] = "0" * 64
+    with pytest.raises(ValueError, match="SHA-256"):
+        core._download(m, "onnx/u.onnx")
+    assert os.listdir(os.path.dirname(path)) == ["t.onnx"]                       # nothing left of the bad one

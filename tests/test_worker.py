@@ -509,3 +509,14 @@ def test_one_prints_its_decision_as_the_last_stdout_line(env, monkeypatch, capsy
     worker.main()
     rec = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
     assert rec["status"] == "corrected" and rec["sub"] == env["sub"] and rec["output_path"] == env["sub"]
+
+
+def test_prepare_loads_the_default_model_and_prints_ready(monkeypatch, capsys):
+    """What the Jellyfin plugin runs once the engine is installed: the model is downloaded then."""
+    monkeypatch.delattr(os, "nice", raising=False)
+    seen = []
+    monkeypatch.setattr(worker.core, "embed", lambda texts, model=None: seen.append(model))
+    monkeypatch.setattr(sys, "argv", ["semantic-subsync-worker", "prepare"])
+    worker.main()
+    rec = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert rec["status"] == "ready" and seen == [worker.core.DEFAULT_MODEL] == [rec["model"]]

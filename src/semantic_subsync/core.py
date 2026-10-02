@@ -21,7 +21,9 @@ MODELS = {
     # decisions on the benches; only the first `dims` dimensions are used (Matryoshka training).
     # The official float16 export: half the download of the float32 file, same decisions on the benches
     "static": dict(repo="sentence-transformers/static-similarity-mrl-multilingual-v1", min_sim=0.32, dims=512,
-                   revision="b68f4122911bcffcd6e1f695f2d99cd6788972d8", table="onnx/model_fp16.onnx"),
+                   revision="b68f4122911bcffcd6e1f695f2d99cd6788972d8", table="onnx/model_fp16.onnx",
+                   sha256={"0_StaticEmbedding/tokenizer.json": "11aaf894a4ccf3d95e8830e27c0f8152791fbbff2b988e29a265580b86edd216",
+                           "onnx/model_fp16.onnx": "fcdf6c63211755d3e79c2e75a280e5826f1c0c002d90c9dd60519af9503352ab"}),
     # a small multilingual transformer: much slower, a little better on some hard cases
     "minilm": dict(repo="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2", min_sim=0.55),
 }
@@ -148,6 +150,28 @@ def _onnx_table(path, name="embedding.weight"):
                 return raw[data[0]:data[1]].view(types[dtype]).reshape(dims)
     raise ValueError(f"{path}: no tensor {name}")
 
+def _download(m, filename):
+    """A file of the model's Hugging Face repository at its fixed revision, checked against its
+    SHA-256, kept in $HF_HOME/semantic-subsync (default ~/.cache/huggingface/semantic-subsync).
+    A file only takes its final name once verified, so a file found there is complete."""
+    import hashlib, urllib.request
+    root = os.environ.get("HF_HOME") or os.path.join(os.path.expanduser("~"), ".cache", "huggingface")
+    path = os.path.join(root, "semantic-subsync", m["repo"].replace("/", "--"), m["revision"], filename)
+    if os.path.exists(path): return path
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    url = f"https://huggingface.co/{m['repo']}/resolve/{m['revision']}/{filename}"
+    tmp, h = f"{path}.{os.getpid()}.part", hashlib.sha256()
+    try:
+        with urllib.request.urlopen(url, timeout=60) as r, open(tmp, "wb") as f:
+            while chunk := r.read(1 << 20):
+                h.update(chunk); f.write(chunk)
+        if h.hexdigest() != m["sha256"][filename]:
+            raise ValueError(f"{url}: the download does not match its SHA-256")
+        os.replace(tmp, path)
+    finally:
+        if os.path.exists(tmp): os.remove(tmp)
+    return path
+
 def _load_static(m, d):
     """A cue's vector is the mean of its token vectors. The table is the official float16 export
     (onnx/model_fp16.onnx at a fixed revision), or a local copy (model_fp16.onnx, or the
@@ -159,9 +183,7 @@ def _load_static(m, d):
         table_file = next((p for p in (os.path.join(d, f) for f in ("model_fp16.onnx", "model.safetensors"))
                            if os.path.exists(p)), os.path.join(d, "model_fp16.onnx"))
     else:
-        from huggingface_hub import hf_hub_download
-        tok_file = hf_hub_download(m["repo"], "0_StaticEmbedding/tokenizer.json", revision=m["revision"])
-        table_file = hf_hub_download(m["repo"], m["table"], revision=m["revision"])
+        tok_file, table_file = (_download(m, f) for f in ("0_StaticEmbedding/tokenizer.json", m["table"]))
     tok = Tokenizer.from_file(tok_file)
     full = _safetensors_table(table_file) if table_file.endswith(".safetensors") else _onnx_table(table_file)
     table = np.ascontiguousarray(full[:, :m["dims"]]); del full

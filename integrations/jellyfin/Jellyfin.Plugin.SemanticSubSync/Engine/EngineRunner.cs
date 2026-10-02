@@ -28,6 +28,13 @@ public sealed class EngineRunner
         _logger = logger;
     }
 
+    /// <summary>The worker keeps its state and the model in the plugin's data folder.</summary>
+    internal static void SetEnvironment(ProcessStartInfo psi)
+    {
+        psi.Environment["SEMSYNC_DIR"] = Path.Combine(EngineInstaller.DataDir, "state");
+        psi.Environment["HF_HOME"] = Path.Combine(EngineInstaller.DataDir, "models");
+    }
+
     public async Task<EngineResult?> RunAsync(string video, string subtitle, CancellationToken ct)
     {
         var config = Plugin.Instance!.Configuration;
@@ -39,10 +46,8 @@ public sealed class EngineRunner
         psi.ArgumentList.Add("one");
         psi.ArgumentList.Add(video);
         psi.ArgumentList.Add(subtitle);
-        psi.Environment["SEMSYNC_DIR"] = Path.Combine(EngineInstaller.DataDir, "state");
+        SetEnvironment(psi);
         psi.Environment["SEMSYNC_OUTPUT"] = config.OutputMode == "side" ? "side" : "replace";
-        psi.Environment["HF_HOME"] = Path.Combine(EngineInstaller.DataDir, "models");
-        psi.Environment["HF_HUB_DISABLE_PROGRESS_BARS"] = "1";
         // the engine calls ffmpeg/ffprobe: use the ones Jellyfin ships with
         var ffmpegDir = Path.GetDirectoryName(_mediaEncoder.EncoderPath);
         if (!string.IsNullOrEmpty(ffmpegDir))

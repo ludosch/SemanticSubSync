@@ -12,9 +12,18 @@ using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.SemanticSubSync.Engine;
 
+/// <summary>Where the engine stands, shown on the plugin page.</summary>
+/// <param name="State">not_installed, installing, ready or failed.</param>
+/// <param name="Message">Why it failed, or what it installs.</param>
+/// <param name="Since">When this state began (UTC).</param>
+public sealed record EngineStatus(string State, string? Message, DateTime Since);
+
 /// <summary>Installs the engine in the plugin's data folder: the uv binary (pinned, checksum
-/// verified), a standalone Python fetched by uv, and semantic-subsync[static] in a venv.
-/// Nothing is installed system-wide; deleting the data folder removes everything.</summary>
+/// verified), a standalone Python fetched by uv, semantic-subsync[static] in a venv, then the
+/// sentence model (`worker prepare`, pinned and checksum verified by the engine). uv is deleted
+/// once done and fetched again for an update. Nothing is installed system-wide; deleting the data
+/// folder removes everything. One installation at a time: a sync that needs the engine waits for
+/// the one in progress.</summary>
 public sealed class EngineInstaller : IDisposable
 {
     /// <summary>The semantic-subsync release this plugin is built for.</summary>
@@ -26,6 +35,7 @@ public sealed class EngineInstaller : IDisposable
     private readonly IHttpClientFactory _http;
     private readonly ILogger<EngineInstaller> _logger;
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private EngineStatus? _status;
 
     public EngineInstaller(IHttpClientFactory http, ILogger<EngineInstaller> logger)
     {
@@ -47,6 +57,9 @@ public sealed class EngineInstaller : IDisposable
 
     private static string MarkerPath => Path.Combine(EngineDir, "installed.txt");
 
+    /// <summary>The current state; before any attempt, ready when an installation is on disk.</summary>
+    public EngineStatus Status => _status ?? new EngineStatus(IsInstalled() ? "ready" : "not_installed", null, DateTime.UtcNow);
+
     /// <summary>What gets installed: the configured override, else the official wheel of EngineVersion.</summary>
     public static string Source
     {
@@ -65,17 +78,20 @@ public sealed class EngineInstaller : IDisposable
         await _gate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            if (File.Exists(WorkerPath) && File.Exists(MarkerPath)
-                && (await File.ReadAllTextAsync(MarkerPath, ct).ConfigureAwait(false)).Trim() == Source)
+            if (IsInstalled())
             {
+                _status = _status is { State: "ready" } ? _status : new EngineStatus("ready", null, DateTime.UtcNow);
                 return true;
             }
 
             if (!OperatingSystem.IsLinux())
             {
                 _logger.LogError("SemanticSubSync: the engine can only be installed on Linux for now");
+                _status = new EngineStatus("failed", "the engine can only be installed on Linux for now", DateTime.UtcNow);
                 return false;
             }
+
+            _status = new EngineStatus("installing", Source, DateTime.UtcNow);
 
             Directory.CreateDirectory(EngineDir);
             if (!File.Exists(UvPath))
@@ -86,19 +102,59 @@ public sealed class EngineInstaller : IDisposable
             _logger.LogInformation("SemanticSubSync: installing the engine from {Source}", Source);
             await RunUvAsync(["venv", "--clear", "--python", PythonVersion, "--python-preference", "only-managed", VenvDir], ct).ConfigureAwait(false);
             await RunUvAsync(["pip", "install", "--python", Path.Combine(VenvDir, "bin", "python"), $"semantic-subsync[static] @ {Source}"], ct).ConfigureAwait(false);
-            await File.WriteAllTextAsync(MarkerPath, Source, ct).ConfigureAwait(false);
             Directory.Delete(Path.Combine(EngineDir, "uv-cache"), recursive: true);   // packages are copied into the venv
-            _logger.LogInformation("SemanticSubSync: engine installed");
+            File.Delete(UvPath);   // not needed to run; fetched again for an update
+            _logger.LogInformation("SemanticSubSync: engine installed, downloading the sentence model");
+            await PrepareAsync(ct).ConfigureAwait(false);
+            await File.WriteAllTextAsync(MarkerPath, Source, ct).ConfigureAwait(false);
+            _logger.LogInformation("SemanticSubSync: engine ready");
+            _status = new EngineStatus("ready", null, DateTime.UtcNow);
             return true;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger.LogError(ex, "SemanticSubSync: engine installation failed");
+            _status = new EngineStatus("failed", ex.Message, DateTime.UtcNow);
             return false;
         }
         finally
         {
+            if (_status is { State: "installing" })   // cancelled: Jellyfin is stopping
+            {
+                _status = new EngineStatus("not_installed", null, DateTime.UtcNow);
+            }
+
             _gate.Release();
+        }
+    }
+
+    private static bool IsInstalled()
+        => File.Exists(WorkerPath) && File.Exists(MarkerPath) && File.ReadAllText(MarkerPath).Trim() == Source;
+
+    /// <summary>`worker prepare`: downloads and loads the model, so the first subtitle does not wait for it.</summary>
+    private static async Task PrepareAsync(CancellationToken ct)
+    {
+        var psi = new ProcessStartInfo(WorkerPath) { RedirectStandardOutput = true, RedirectStandardError = true };
+        psi.ArgumentList.Add("prepare");
+        EngineRunner.SetEnvironment(psi);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(TimeSpan.FromMinutes(60));
+        using var p = Process.Start(psi) ?? throw new InvalidOperationException("the engine did not start");
+        var stdout = p.StandardOutput.ReadToEndAsync(timeout.Token);
+        var stderr = p.StandardError.ReadToEndAsync(timeout.Token);
+        try
+        {
+            await p.WaitForExitAsync(timeout.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            p.Kill(entireProcessTree: true);
+            throw;
+        }
+
+        if (p.ExitCode != 0 || !(await stdout.ConfigureAwait(false)).Contains("\"ready\"", StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException($"the sentence model could not be prepared ({p.ExitCode}): {Tail(await stderr.ConfigureAwait(false))}");
         }
     }
 

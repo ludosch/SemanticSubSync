@@ -20,8 +20,10 @@ new video, or new / changed .srt ──> plugin ──> semantic-subsync-worker 
 - **Write access to the media folders.** Many setups mount the library read-only (`:ro`) in
   the Jellyfin container: remove `:ro` for the plugin to write the corrected subtitle next to the
   video. A read-only folder is reported in the Jellyfin log and skipped.
-- About 700 MB of disk in Jellyfin's plugin data folder: the engine (a standalone Python, about
-  250 MB) and the model (about 420 MB), both downloaded on first use.
+- About 410 MB of disk in Jellyfin's plugin data folder: the engine (a standalone Python, about
+  200 MB) and the model (about 210 MB). Both are downloaded in the background a few minutes after
+  Jellyfin starts (the restart that follows the installation); the plugin page shows when the
+  engine is ready.
 
 ## Install
 
@@ -79,7 +81,7 @@ removes the engine, the model and the history.
 | Path | Content |
 |---|---|
 | `engine/` | uv, a standalone Python and the semantic-subsync package |
-| `models/` | the sentence model (Hugging Face cache) |
+| `models/` | the sentence model, at a fixed revision, checked against its SHA-256 |
 | `state/semsync.log` | one JSON line per decision |
 | `state/state.db` | the worker's record of each subtitle |
 | `seen.json` | size and date of each subtitle at its last run, to skip unchanged files quickly |
