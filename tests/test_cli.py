@@ -5,16 +5,27 @@ from pathlib import Path
 import pytest
 
 from semantic_subsync import cli, core, media
-from synth import dialogue, fake_embed, ref_cues, tgt_cues
+from synth import dialogue, ref_cues, tgt_cues, use_fake_model
 
 
 @pytest.fixture
 def files(tmp_path, monkeypatch):
-    monkeypatch.setattr(core, "embed", fake_embed)
+    use_fake_model(monkeypatch)
     base = dialogue(n=200, seed=33)
     ref = tmp_path / "Movie.en.srt"
     core.write(str(ref), ref_cues(base))
     return dict(tmp=tmp_path, base=base, ref=str(ref), sub=str(tmp_path / "Movie.fr.srt"))
+
+
+def test_model_option_reaches_the_engine(files, monkeypatch, capsys):
+    core.write(files["sub"], tgt_cues(files["base"], warp=lambda t: t + 10))
+    used = []
+    real = core.embed
+    monkeypatch.setattr(core, "embed", lambda texts, model=None: used.append(model) or real(texts, model))
+    assert cli.main([files["sub"], files["ref"], "--model", "minilm", "--json"]) == cli.EXIT_OK
+    assert set(used) == {"minilm"} and json.loads(capsys.readouterr().out)["model"] == "minilm"
+    with pytest.raises(SystemExit):
+        cli.main([files["sub"], files["ref"], "--model", "bert"])
 
 
 def test_default_output():

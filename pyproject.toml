@@ -1,6 +1,6 @@
 [project]
 name = "semantic-subsync"
-version = "0.10.1.dev0"
+version = "0.11.0.dev0"
 description = "Re-time a subtitle on a reference subtitle in another language by matching cues on meaning."
 readme = "README.md"
 license = "MIT"
@@ -20,8 +20,8 @@ Repository = "https://github.com/ludosch/SemanticSubSync"
 Changelog = "https://github.com/ludosch/SemanticSubSync/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
-# The sentence model. Not needed by the unit tests, which use a deterministic fake embedder.
-model = ["fastembed>=0.8"]
+# The sentence models. Not needed by the unit tests, which use a deterministic fake embedder.
+model = ["fastembed>=0.8", "tokenizers>=0.20", "huggingface-hub>=0.24"]
 
 [project.scripts]
 semantic-subsync = "semantic_subsync.cli:main"
@@ -37,6 +37,6 @@ build-backend = "hatchling.build"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [
-    "model: needs the real sentence model (set SEMSYNC_TEST_MODEL=1, optionally SEMSYNC_MODEL_DIR)",
+    "model: needs the real sentence models (set SEMSYNC_TEST_MODEL=1, optionally SEMSYNC_MODEL_DIR)",
     "corpus: real downloaded subtitles, kept out of the repository (set SEMSYNC_CORPUS)",
 ]

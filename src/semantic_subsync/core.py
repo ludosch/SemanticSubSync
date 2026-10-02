@@ -11,11 +11,20 @@ language (e.g. the original EN) by matching cues on MEANING, not on timing shape
 
 Command line: see cli.py.
 """
-import re, bisect
+import os, re, bisect
 import numpy as np
 
-MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
-P = dict(topk=3, min_sim=0.55, nb=7, max_dev=1.0, max_offset=900.0,
+# The sentence models. Their similarity scales differ, so the threshold for a candidate match
+# (min_sim) belongs to the model and is never chosen on its own.
+MODELS = {
+    # averaged static token vectors (no transformer): ~100x faster than minilm on a CPU, same
+    # decisions on the benches; only the first `dims` dimensions are used (Matryoshka training)
+    "static": dict(repo="sentence-transformers/static-similarity-mrl-multilingual-v1", min_sim=0.32, dims=512),
+    # a small multilingual transformer: much slower, a little better on some hard cases
+    "minilm": dict(repo="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2", min_sim=0.55),
+}
+DEFAULT_MODEL = os.environ.get("SEMSYNC_MODEL", "static")
+P = dict(topk=3, nb=7, max_dev=1.0, max_offset=900.0,
          merge="mean",   # "embed": encode 2-cue merges; "mean": average the two cue vectors (free)
          stride=1,       # embed every Nth target cue only (anchors); all cues are still re-timed
          tgt_merge=True, # also match 2 consecutive target cues (a sentence split in two)
@@ -41,27 +50,70 @@ def best_drift(at, ao, tol=0.5, lag=60.0):
     if scores[0.0] >= 0.95 * best: return 0.0
     return max(DRIFTS, key=lambda b: (scores[b], -abs(b)))
 
-_model = None; _cache = {}
-def embed(texts):
-    global _model
-    import hashlib, os
-    key = hashlib.md5((MODEL + os.environ.get("SEMSYNC_MODEL_DIR", "") + "\x00" + "\x00".join(texts)).encode()).hexdigest()
+_models = {}; _cache = {}
+def model_dir(model):
+    """$SEMSYNC_MODEL_DIR/<model> when that folder exists (a local copy, e.g. the int8 minilm),
+    else None: the model is downloaded from Hugging Face on first use."""
+    root = os.environ.get("SEMSYNC_MODEL_DIR")
+    d = root and os.path.join(root, model)
+    return d if d and os.path.isdir(d) else None
+
+def check_model(model):
+    if model not in MODELS:
+        raise ValueError(f"unknown model {model!r}: choose one of {', '.join(MODELS)}")
+    return model
+
+def embed(texts, model=None):
+    import hashlib
+    model = check_model(model or DEFAULT_MODEL)
+    d = model_dir(model)
+    key = hashlib.md5((model + (d or "") + "\x00" + "\x00".join(texts)).encode()).hexdigest()
     if key in _cache: return _cache[key]
     disk = os.environ.get("SEMSYNC_CACHE")
     if disk and os.path.exists(f"{disk}/{key}.npy"):
         _cache[key] = np.load(f"{disk}/{key}.npy"); return _cache[key]
-    if _model is None:
-        from fastembed import TextEmbedding
-        d = os.environ.get("SEMSYNC_MODEL_DIR")   # e.g. an int8-quantized copy of the model
-        _model = TextEmbedding(MODEL, threads=None, **({"specific_model_path": d} if d else {}))
-    order = sorted(range(len(texts)), key=lambda i: len(texts[i]))   # less padding per batch
-    vs = list(_model.embed([texts[i] for i in order], batch_size=64))
-    v = np.empty((len(texts), len(vs[0])), dtype=np.float32)
-    for k, i in enumerate(order): v[i] = vs[k]
+    if model not in _models:
+        _models[model] = (_load_static if model == "static" else _load_minilm)(MODELS[model], d)
+    v = _models[model](texts)
     v /= np.linalg.norm(v, axis=1, keepdims=True) + 1e-9
     _cache[key] = v
     if disk: os.makedirs(disk, exist_ok=True); np.save(f"{disk}/{key}.npy", v)
     return v
+
+def _load_minilm(m, d):
+    from fastembed import TextEmbedding
+    model = TextEmbedding(m["repo"], threads=None, **({"specific_model_path": d} if d else {}))
+    def emb(texts):
+        order = sorted(range(len(texts)), key=lambda i: len(texts[i]))   # less padding per batch
+        vs = list(model.embed([texts[i] for i in order], batch_size=64))
+        v = np.empty((len(texts), len(vs[0])), dtype=np.float32)
+        for k, i in enumerate(order): v[i] = vs[k]
+        return v
+    return emb
+
+def _load_static(m, d):
+    """A cue's vector is the mean of its token vectors. The table is read from the safetensors
+    file directly (memory-mapped, a single float32 tensor): no deep-learning library needed."""
+    import json
+    from tokenizers import Tokenizer
+    if d:
+        tok_file, table_file = os.path.join(d, "tokenizer.json"), os.path.join(d, "model.safetensors")
+    else:
+        from huggingface_hub import hf_hub_download
+        tok_file, table_file = (hf_hub_download(m["repo"], f"0_StaticEmbedding/{f}")
+                                for f in ("tokenizer.json", "model.safetensors"))
+    tok = Tokenizer.from_file(tok_file)
+    raw = np.memmap(table_file, np.uint8, "r"); n = int.from_bytes(bytes(raw[:8]), "little")
+    t = json.loads(bytes(raw[8:8 + n]))["embedding.weight"]; a, b = t["data_offsets"]
+    assert t["dtype"] == "F32", t["dtype"]
+    table = np.ascontiguousarray(raw[8 + n + a: 8 + n + b].view(np.float32).reshape(t["shape"])[:, :m["dims"]])
+    del raw
+    def emb(texts):
+        v = np.zeros((len(texts), table.shape[1]), np.float32)
+        for i, e in enumerate(tok.encode_batch(texts, add_special_tokens=False)):
+            if e.ids: v[i] = table[e.ids].mean(0)
+        return v
+    return emb
 
 # ---------- srt ----------
 TS = re.compile(r"(\d+):(\d+):(\d+)[,.](\d+)\s*-->\s*(\d+):(\d+):(\d+)[,.](\d+)")
@@ -104,9 +156,15 @@ def clean(t):
     return re.sub(r"\s+", " ", t).strip()
 
 # ---------- core ----------
-def sync(tgt, ref, p=P, embed_fn=None):
-    """Re-time `tgt` cues on `ref` cues. `embed_fn(texts) -> unit vectors` defaults to the model."""
-    embed_fn = embed_fn or embed
+def params(model=None, **over):
+    """The engine settings for `model`: P plus that model's min_sim, then `over`."""
+    return {**P, "min_sim": MODELS[check_model(model or DEFAULT_MODEL)]["min_sim"], **over}
+
+def sync(tgt, ref, p=None, embed_fn=None, model=None):
+    """Re-time `tgt` cues on `ref` cues with `model` (default DEFAULT_MODEL). `p` overrides
+    params(model); `embed_fn(texts) -> unit vectors` replaces the model (tests)."""
+    p = params(model, **(p or {}))
+    embed_fn = embed_fn or (lambda texts: embed(texts, model))
     tt = [clean(c[2]) for c in tgt]; rt = [clean(c[2]) for c in ref]
     ti = [i for i, x in enumerate(tt) if len(x) >= 3]
     ri = [j for j, x in enumerate(rt) if len(x) >= 3]
@@ -339,12 +397,12 @@ def segment(at, ao, p, jump=0.8, confirm=6):
 MIN_COVERAGE = 0.25    # share of target cues anchored; below it the reference does not say the same thing
 
 
-def resync(tgt, ref, p=P, embed_fn=None, min_coverage=MIN_COVERAGE):
+def resync(tgt, ref, p=None, embed_fn=None, min_coverage=MIN_COVERAGE, model=None):
     """`sync` plus the decision. Returns (status, cues, stats), status being one of
     "corrected" (cues = re-timed target), "in_sync" (cues = None: nothing to change) or
     "unsure" (cues = None: too few lines match the reference, so it cannot be trusted for
     this target and the file is left alone)."""
-    out, st = sync(tgt, ref, p, embed_fn)
+    out, st = sync(tgt, ref, p, embed_fn, model)
     if out is None or (st.get("coverage") or 0) < min_coverage:
         return "unsure", None, st
     if len(out) == len(tgt) and all(abs(a[0] - b[0]) < 1e-6 and abs(a[1] - b[1]) < 1e-6 for a, b in zip(out, tgt)):

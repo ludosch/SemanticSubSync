@@ -107,9 +107,8 @@ per line, blue in sync, orange out of sync, green fixed.
 ### Steps
 
 1. **Embedding.** Every line is cleaned (tags, hearing-impaired annotations, speaker names) and
-   turned into a vector by a multilingual sentence model
-   ([paraphrase-multilingual-MiniLM-L12-v2](https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2),
-   run locally on CPU through [fastembed](https://github.com/qdrant/fastembed)).
+   turned into a vector by a multilingual sentence model, run locally on CPU (see
+   [Model](#model)).
 2. **Candidates.** Each line, alone or merged with the next one (a sentence split in two), is
    compared with the reference lines, alone or merged by two. The 3 best candidates above a
    similarity threshold are kept.
@@ -149,6 +148,10 @@ These figures come from the author's own library. They show how the tool behaved
 what it will do on any video: on other files, other languages or other hardware, they will
 differ.
 
+They were measured with the minilm model. The static model, the default since 0.11, was run
+again on the same benchmark and on the same real-world datasets: it passed as many benchmark
+cases and made the same decisions on the datasets (see [Model](#model)).
+
 ### Benchmark on embedded tracks
 
 - **Videos:** 15 that carry both a French and an original-language embedded subtitle.
@@ -174,7 +177,7 @@ SemanticSubSync left alone (unsure) the ones where it would have done damage:
 **Audio-only tools,** for comparison, on the same kind of distortions: ffsubsync 29 / 44,
 alass 24 / 44, subaligner 2 / 44, with no confidence signal on failures.
 
-**Speed** on the author's NAS (2-core Celeron J4025), with the int8 model (see
+**Speed** on the author's NAS (2-core Celeron J4025), with the int8 minilm model (see
 [Model](#model)): about 85 s and 590 MB of RAM at peak for a full movie. It depends on the
 hardware and on the number of lines.
 
@@ -299,20 +302,31 @@ The engine knows nothing about media servers or subtitle managers. Integrations 
 
 ## Model
 
-The model is
-[paraphrase-multilingual-MiniLM-L12-v2](https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2),
-published by [sentence-transformers](https://www.sbert.net/) under the Apache 2.0 license.
+Two multilingual sentence models, both published by
+[sentence-transformers](https://www.sbert.net/) under the Apache 2.0 license:
+
+| Name | Model | |
+|---|---|---|
+| `static` (default) | [static-similarity-mrl-multilingual-v1](https://huggingface.co/sentence-transformers/static-similarity-mrl-multilingual-v1), first 512 dimensions | Averaged word vectors, no neural network to run: about 100 times faster than minilm on a CPU |
+| `minilm` | [paraphrase-multilingual-MiniLM-L12-v2](https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2), through [fastembed](https://github.com/qdrant/fastembed) | A small transformer: slower, a little better on some hard cases |
+
+On the author's benchmark and datasets the two made the same decisions; minilm corrected a few
+hard files better (a frame-rate change on a different cut, for instance). Choose the model with
+`--model`, `SEMSYNC_MODEL`, or, for one subtitle in the worker, `one --model` (see the
+[Bazarr guide](integrations/bazarr/README.md#test-one-pair-by-hand)). Each model has its own
+similarity threshold, set in the code.
 
 | Variable | Meaning |
 |---|---|
-| `SEMSYNC_MODEL_DIR` | Folder of a local copy of the model, e.g. the int8 one (see below) |
+| `SEMSYNC_MODEL` | `static` (default) or `minilm` |
+| `SEMSYNC_MODEL_DIR` | Folder holding local copies, one sub-folder per model: `static/` (`tokenizer.json`, `model.safetensors`), `minilm/` (e.g. the int8 one, see below). A model without its sub-folder is downloaded from Hugging Face on first use |
 | `SEMSYNC_CACHE` | Optional folder where embeddings are cached on disk |
 
-**int8 model.** [`tools/quantize_model.py`](tools/quantize_model.py) builds a 112 MB int8 copy.
+**int8 minilm.** [`tools/quantize_model.py`](tools/quantize_model.py) builds a 112 MB int8 copy.
 On the author's NAS it was about 40 % faster and used 2.5 times less RAM, with the same results.
 
-**Languages.** Both subtitles must be in languages the model was trained on. Its model card
-lists: ar, bg, ca, cs, da, de, el, en, es, et, fa, fi, fr, fr-ca, gl, gu, he, hi, hr, hu, hy,
+**Languages.** Both subtitles must be in languages the model was trained on. The minilm model
+card lists (the static one lists the same, with zh for both Chinese variants): ar, bg, ca, cs, da, de, el, en, es, et, fa, fi, fr, fr-ca, gl, gu, he, hi, hr, hu, hy,
 id, it, ja, ka, ko, ku, lt, lv, mk, mn, mr, ms, my, nb, nl, pl, pt, pt-br, ro, ru, sk, sl, sq,
 sr, sv, th, tr, uk, ur, vi, zh-cn, zh-tw. Another language may partly work, untested.
 
@@ -320,7 +334,7 @@ sr, sv, th, tr, uk, ur, vi, zh-cn, zh-tw. Another language may partly work, unte
 
 ```bash
 mise x -- uv run pytest                                               # fast, no model needed
-SEMSYNC_TEST_MODEL=1 mise x -- uv run --extra model pytest -m model   # end to end with the real model
+SEMSYNC_TEST_MODEL=1 mise x -- uv run --extra model pytest -m model   # end to end with each real model
 SEMSYNC_CORPUS=~/corpus SEMSYNC_CACHE=~/corpus/emb mise x -- uv run --extra model pytest -m corpus   # local real subtitles
 ```
 

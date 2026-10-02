@@ -1,10 +1,10 @@
-"""Make the int8 copy of the sentence model used on small CPUs (112 MB, ~40 % faster, ~2.5x less RAM).
+"""Make the int8 copy of the minilm model for small CPUs (112 MB, ~40 % faster, ~2.5x less RAM).
 
 fastembed ships the model as FP16 ONNX, which a CPU runs as FP32 anyway. This script converts it
 to FP32, then applies dynamic int8 quantization to the MatMul, Attention and Gather (embedding
-table) operators. Point SEMSYNC_MODEL_DIR at the output folder.
+table) operators. Write it to <models>/minilm and point SEMSYNC_MODEL_DIR at <models>.
 
-Usage: uv run --extra model --with onnx python tools/quantize_model.py OUTPUT_DIR
+Usage: uv run --extra model --with onnx python tools/quantize_model.py MODELS_DIR/minilm
 """
 import os, shutil, sys, tempfile
 

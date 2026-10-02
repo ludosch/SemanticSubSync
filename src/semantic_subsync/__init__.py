@@ -1,5 +1,5 @@
 """SemanticSubSync: re-time a subtitle on a reference subtitle by matching cues on meaning."""
-from .core import MIN_COVERAGE, P, clean, parse, resync, sync, write
+from .core import MIN_COVERAGE, MODELS, P, clean, params, parse, resync, sync, write
 
-__version__ = "0.10.1.dev0"
-__all__ = ["MIN_COVERAGE", "P", "clean", "parse", "resync", "sync", "write", "__version__"]
+__version__ = "0.11.0.dev0"
+__all__ = ["MIN_COVERAGE", "MODELS", "P", "params", "clean", "parse", "resync", "sync", "write", "__version__"]

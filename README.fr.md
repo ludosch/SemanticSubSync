@@ -114,9 +114,7 @@ réplique, en bleu ce qui est calé, en orange ce qui est décalé, en vert ce q
 
 1. **Vecteurs.** Chaque réplique est nettoyée (balises, annotations pour sourds et
    malentendants, noms des personnages), puis transformée en vecteur par un modèle de phrases
-   multilingue
-   ([paraphrase-multilingual-MiniLM-L12-v2](https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2),
-   exécuté en local sur le processeur via [fastembed](https://github.com/qdrant/fastembed)).
+   multilingue, exécuté en local sur le processeur (voir [Modèle](#modèle)).
 2. **Candidates.** Chaque réplique, seule ou fusionnée avec la suivante (une phrase coupée en
    deux), est comparée aux répliques de la référence, seules ou fusionnées par deux. Les
    3 meilleures candidates au-dessus d'un seuil de similarité sont gardées.
@@ -158,6 +156,10 @@ Ces chiffres viennent de la vidéothèque de l'auteur. Ils montrent comment l'ou
 comporté, pas ce qu'il fera sur n'importe quelle vidéo : avec d'autres fichiers, d'autres
 langues ou un autre matériel, ils seront différents.
 
+Ils ont été mesurés avec le modèle minilm. Le modèle static, celui par défaut depuis la 0.11, a
+été repassé sur le même benchmark et les mêmes jeux de données réels : il a réussi autant de cas
+du benchmark et pris les mêmes décisions sur les jeux de données (voir [Modèle](#modèle)).
+
 ### Benchmark sur pistes intégrées
 
 - **Vidéos :** 15 qui contiennent à la fois un sous-titre français et un sous-titre en version
@@ -186,7 +188,7 @@ référence, SemanticSubSync a ignoré (pas sûr) ceux où il aurait fait des d�
 ffsubsync 29 / 44, alass 24 / 44, subaligner 2 / 44, sans aucun signal de confiance en cas
 d'échec.
 
-**Vitesse** sur le NAS de l'auteur (Celeron J4025, 2 cœurs), avec le modèle int8 (voir
+**Vitesse** sur le NAS de l'auteur (Celeron J4025, 2 cœurs), avec le modèle minilm int8 (voir
 [Modèle](#modèle)) : environ 85 s et 590 Mo de RAM au maximum pour un film complet. Elle dépend
 du matériel et du nombre de répliques.
 
@@ -313,21 +315,34 @@ dans [`integrations/`](integrations) :
 
 ## Modèle
 
-Le modèle est
-[paraphrase-multilingual-MiniLM-L12-v2](https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2),
-publié par [sentence-transformers](https://www.sbert.net/) sous licence Apache 2.0.
+Deux modèles de phrases multilingues, tous deux publiés par
+[sentence-transformers](https://www.sbert.net/) sous licence Apache 2.0 :
+
+| Nom | Modèle | |
+|---|---|---|
+| `static` (par défaut) | [static-similarity-mrl-multilingual-v1](https://huggingface.co/sentence-transformers/static-similarity-mrl-multilingual-v1), 512 premières dimensions | Moyenne de vecteurs de mots, aucun réseau de neurones à exécuter : environ 100 fois plus rapide que minilm sur un processeur |
+| `minilm` | [paraphrase-multilingual-MiniLM-L12-v2](https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2), via [fastembed](https://github.com/qdrant/fastembed) | Un petit transformer : plus lent, un peu meilleur sur certains cas difficiles |
+
+Sur le benchmark et les jeux de données de l'auteur, les deux ont pris les mêmes décisions ;
+minilm a mieux corrigé quelques fichiers difficiles (par exemple un changement de fréquence
+d'images sur un autre montage). Le modèle se choisit avec `--model`, `SEMSYNC_MODEL` ou, pour un
+seul sous-titre dans le worker, `one --model` (voir le
+[guide Bazarr](integrations/bazarr/README.md#test-one-pair-by-hand)). Chaque modèle a son propre
+seuil de similarité, fixé dans le code.
 
 | Variable | Rôle |
 |---|---|
-| `SEMSYNC_MODEL_DIR` | Dossier d'une copie locale du modèle, par exemple la version int8 (voir ci-dessous) |
+| `SEMSYNC_MODEL` | `static` (par défaut) ou `minilm` |
+| `SEMSYNC_MODEL_DIR` | Dossier des copies locales, un sous-dossier par modèle : `static/` (`tokenizer.json`, `model.safetensors`), `minilm/` (par exemple la version int8, voir ci-dessous). Un modèle sans sous-dossier est téléchargé depuis Hugging Face à la première utilisation |
 | `SEMSYNC_CACHE` | Dossier facultatif où les vecteurs sont mis en cache sur disque |
 
-**Modèle int8.** [`tools/quantize_model.py`](tools/quantize_model.py) produit une copie int8 de
+**minilm int8.** [`tools/quantize_model.py`](tools/quantize_model.py) produit une copie int8 de
 112 Mo. Sur le NAS de l'auteur, elle était environ 40 % plus rapide et utilisait 2,5 fois moins
 de RAM, avec les mêmes résultats.
 
 **Langues.** Les deux sous-titres doivent être dans des langues sur lesquelles le modèle a été
-entraîné. Sa fiche les liste ainsi : ar, bg, ca, cs, da, de, el, en, es, et, fa, fi, fr, fr-ca,
+entraîné. La fiche de minilm les liste ainsi (celle de static donne les mêmes, avec zh pour les
+deux variantes du chinois) : ar, bg, ca, cs, da, de, el, en, es, et, fa, fi, fr, fr-ca,
 gl, gu, he, hi, hr, hu, hy, id, it, ja, ka, ko, ku, lt, lv, mk, mn, mr, ms, my, nb, nl, pl, pt,
 pt-br, ro, ru, sk, sl, sq, sr, sv, th, tr, uk, ur, vi, zh-cn, zh-tw. Une autre langue peut
 marcher en partie, sans garantie (non testé).
@@ -336,7 +351,7 @@ marcher en partie, sans garantie (non testé).
 
 ```bash
 mise x -- uv run pytest                                               # rapide, sans le modèle
-SEMSYNC_TEST_MODEL=1 mise x -- uv run --extra model pytest -m model   # de bout en bout avec le vrai modèle
+SEMSYNC_TEST_MODEL=1 mise x -- uv run --extra model pytest -m model   # de bout en bout avec chaque vrai modèle
 SEMSYNC_CORPUS=~/corpus SEMSYNC_CACHE=~/corpus/emb mise x -- uv run --extra model pytest -m corpus   # sous-titres réels locaux
 ```
 

@@ -7,6 +7,12 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- A second, much faster sentence model, `static`
+  (static-similarity-mrl-multilingual-v1, first 512 dimensions), now the default; `minilm`
+  stays available. Choose with `--model`, `SEMSYNC_MODEL`, or for one subtitle with
+  `worker one --model NAME`: that choice is kept in `state.db` (`model`, `model_choice`) for
+  later runs of the subtitle; `--model default` drops it. Each model carries its own similarity
+  threshold (`core.MODELS`).
 - Worker: `history WORD...` prints every logged decision about the subtitles whose path contains
   every word (e.g. `history Ghosts S04E02`), grouped by subtitle with its full path; `status`
   filters the same way.
@@ -15,6 +21,9 @@ All notable changes to this project are documented here. The format follows
 - `tools/smoke_image.py`: the release checks that each image reads an embedded subtitle.
 
 ### Changed
+- `SEMSYNC_MODEL_DIR` is now a folder with one sub-folder per model (`static/`, `minilm/`).
+- `core.P` no longer holds `min_sim`: use `core.params(model)`. `core.sync` and `core.resync`
+  take `model=`.
 - The decision "refused" is now "unsure" (too few lines match the reference, the file is left
   alone): `core.resync`, logs, `state.db`, `--json`, `cli.EXIT_UNSURE` (exit status 1, unchanged)
   and the documentation.

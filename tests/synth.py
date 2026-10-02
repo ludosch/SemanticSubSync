@@ -27,7 +27,18 @@ def _vec(key):
     return v / np.linalg.norm(v)
 
 
-def fake_embed(texts):
+MIN_SIM = 0.55                 # the fake embedder has MiniLM's similarity scale
+
+
+def use_fake_model(monkeypatch):
+    """Every model becomes the fake embedder, with the matching min_sim."""
+    monkeypatch.setattr("semantic_subsync.core.embed", fake_embed)
+    from semantic_subsync import core
+    for name, m in core.MODELS.items():
+        monkeypatch.setitem(core.MODELS, name, {**m, "min_sim": MIN_SIM})
+
+
+def fake_embed(texts, model=None):
     out = np.empty((len(texts), DIM), dtype=np.float32)
     for n, t in enumerate(texts):
         keys = re.findall(r"k\d+[ab]?", t) or [SYNONYMS.get(w, w) for w in re.findall(r"\w+", t.lower())]

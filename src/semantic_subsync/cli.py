@@ -31,6 +31,9 @@ def parser():
                     help="lines the video has no room for (a credit, a recap or a scene it lacks): "
                          "drop them all (default), or keep them where nothing is shown nor said, "
                          "a block of consecutive lines whole or not at all")
+    ap.add_argument("--model", choices=list(core.MODELS), default=core.DEFAULT_MODEL,
+                    help=f"sentence model (default {core.DEFAULT_MODEL}, or $SEMSYNC_MODEL): static is about "
+                         "100 times faster, minilm is slower and a little better on some hard cases")
     ap.add_argument("--min-coverage", type=float, default=core.MIN_COVERAGE, metavar="X",
                     help=f"leave the file alone below this share of anchored lines (default {core.MIN_COVERAGE})")
     ap.add_argument("--json", action="store_true", help="print the decision and statistics as JSON")
@@ -59,13 +62,13 @@ def main(argv=None):
             return EXIT_ERROR
         ref, ref_desc = found
 
-    status, cues, st = core.resync(media.read_srt(a.subtitle, a.lang), ref, p={**core.P, "extra_lines": a.extra_lines},
-                                   min_coverage=a.min_coverage)
+    status, cues, st = core.resync(media.read_srt(a.subtitle, a.lang), ref, p={"extra_lines": a.extra_lines},
+                                   min_coverage=a.min_coverage, model=a.model)
     if cues is not None:
         core.write(out_path, cues)
     if a.json:
         print(json.dumps({**st, "engine_status": st.get("status"), "status": status,
-                          "output": out_path if cues is not None else None, "reference": ref_desc},
+                          "output": out_path if cues is not None else None, "reference": ref_desc, "model": a.model},
                          ensure_ascii=False))
     else:
         if status == "corrected":

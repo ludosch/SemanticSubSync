@@ -1,6 +1,7 @@
 """End-to-end with the real multilingual model (skipped by default).
 
-Run: SEMSYNC_TEST_MODEL=1 [SEMSYNC_MODEL_DIR=.../minilm-int8g] uv run --extra model pytest -m model
+Run: SEMSYNC_TEST_MODEL=1 [SEMSYNC_MODEL_DIR=.../models] uv run --extra model pytest -m model
+Every model of core.MODELS is tested; SEMSYNC_MODEL_DIR/<model> is used when it exists.
 The dialogue below was written for this test (no film extract). The French side is the point:
 the engine matches lines across languages.
 """
@@ -50,6 +51,11 @@ PAIRS = [
 ]
 
 
+@pytest.fixture(params=list(core.MODELS))
+def model(request):
+    return request.param
+
+
 def timeline(seed=0):
     rng = np.random.default_rng(seed)
     t, out = 20.0, []
@@ -59,17 +65,17 @@ def timeline(seed=0):
 
 
 @pytest.mark.parametrize("shift", [4.0, -6.5])
-def test_real_model_constant_offset(shift):
+def test_real_model_constant_offset(shift, model):
     tl = timeline()
     ref = [[s, e, en] for (s, e), (en, _) in zip(tl, PAIRS)]
     tgt = [[s + shift, e + shift, fr] for (s, e), (_, fr) in zip(tl, PAIRS)]
-    out, st = core.sync(tgt, ref)
+    out, st = core.sync(tgt, ref, model=model)
     assert out is not None, st
     assert st["coverage"] >= 0.8, st
     assert all(abs(a[0] - r[0]) < 0.3 for a, r in zip(out, ref)), st
 
 
-def test_real_model_translation_pairs_score_above_min_sim():
-    v_en = core.embed([en for en, _ in PAIRS]); v_fr = core.embed([fr for _, fr in PAIRS])
+def test_real_model_translation_pairs_score_above_min_sim(model):
+    v_en = core.embed([en for en, _ in PAIRS], model); v_fr = core.embed([fr for _, fr in PAIRS], model)
     sims = np.sum(v_en * v_fr, axis=1)
-    assert sims.min() >= core.P["min_sim"], sorted(zip(sims.round(2), (en for en, _ in PAIRS)))[:3]
+    assert sims.min() >= core.MODELS[model]["min_sim"], sorted(zip(sims.round(2), (en for en, _ in PAIRS)))[:3]

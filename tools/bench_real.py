@@ -13,7 +13,7 @@ Measured for each pair:
   0.15 above any other reference line, 12+ characters) should start within 0.5 s / 1 s of it.
   Two translations are rarely cut identically, so even a subtitle in sync does not reach 100 %.
 
-Usage: SEMSYNC_CACHE=... [SEMSYNC_MODEL_DIR=...] uv run --extra model python tools/bench_real.py CORPUS [OUT.jsonl]
+Usage: SEMSYNC_CACHE=... [SEMSYNC_MODEL=...] [SEMSYNC_MODEL_DIR=...] uv run --extra model python tools/bench_real.py CORPUS [OUT.jsonl]
 """
 import json, os, statistics, sys
 from collections import Counter

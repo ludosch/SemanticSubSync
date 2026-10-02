@@ -7,7 +7,7 @@ import pytest
 
 from semantic_subsync import core, media, worker
 from semantic_subsync.state import FIELDS, State
-from synth import dialogue, fake_embed, ref_cues, tgt_cues
+from synth import dialogue, fake_embed, ref_cues, tgt_cues, use_fake_model
 
 ROOT = Path(__file__).resolve().parents[1]
 EN_TRACK = {"index": 3, "codec": "subrip", "text": True, "lang": "en", "kind": "normal", "title": "English"}
@@ -22,7 +22,7 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setattr(worker, "FAILED", str(tmp_path / "failed"))
     monkeypatch.setattr(worker, "DB", str(tmp_path / "state.db"))
     monkeypatch.setattr(worker, "OUTPUT", "replace")
-    monkeypatch.setattr(core, "embed", fake_embed)
+    use_fake_model(monkeypatch)
     folder = tmp_path / "Show" / "Season 1"
     folder.mkdir(parents=True)
     video = folder / "Show - S01E01.mkv"
@@ -327,6 +327,57 @@ def test_switching_from_replace_to_side_restores_the_download(env, monkeypatch):
     assert Path(worker.side_path(env["video"], env["sub"])).exists()
 
 
+# --- model -------------------------------------------------------------------------------------
+
+@pytest.fixture
+def models_used(env, monkeypatch):
+    used = []
+    monkeypatch.setattr(core, "embed", lambda texts, model=None: used.append(model) or fake_embed(texts))
+    return used
+
+
+def test_default_model_is_used_and_recorded(env, models_used):
+    write_late(env)
+    worker.process(env["video"], env["sub"])
+    r = row(env["sub"])
+    assert set(models_used) == {core.DEFAULT_MODEL} and r["model"] == core.DEFAULT_MODEL and r["model_choice"] is None
+    assert json.loads(r["settings"])["model"] == core.DEFAULT_MODEL
+
+
+def test_model_chosen_by_hand_is_kept_for_later_runs(env, models_used):
+    write_late(env)
+    worker.process(env["video"], env["sub"])
+    worker.process(env["video"], env["sub"], model="minilm")             # no --force needed: other model
+    assert last_log(env)["status"] == "corrected" and models_used[-1] == "minilm"
+    assert row(env["sub"])["model_choice"] == "minilm"
+    write_late(env, shift=20)                                           # a new download later
+    worker.process(env["video"], env["sub"], origin="bazarr")
+    assert models_used[-1] == "minilm" and row(env["sub"])["model"] == "minilm"
+
+
+def test_same_model_by_hand_on_an_unchanged_subtitle_is_unchanged(env, models_used):
+    write_late(env)
+    worker.process(env["video"], env["sub"], model="minilm")
+    n = len(models_used)
+    worker.process(env["video"], env["sub"], model="minilm")
+    assert last_log(env)["status"] == "unchanged" and len(models_used) == n
+
+
+def test_default_drops_the_choice(env, models_used):
+    write_late(env)
+    worker.process(env["video"], env["sub"], model="minilm")
+    worker.process(env["video"], env["sub"], model="default")
+    r = row(env["sub"])
+    assert models_used[-1] == core.DEFAULT_MODEL and r["model"] == core.DEFAULT_MODEL and r["model_choice"] is None
+
+
+def test_unknown_model_is_refused_before_anything(env):
+    write_late(env)
+    with pytest.raises(ValueError, match="unknown model"):
+        worker.process(env["video"], env["sub"], model="bert")
+    assert row(env["sub"]) is None
+
+
 # --- skipped, queue, state ---------------------------------------------------------------------
 
 @pytest.mark.parametrize("which", ["missing_video", "not_srt", "replaced", "resync"])
@@ -360,7 +411,7 @@ def test_state_records_every_field(env):
     r = row(env["sub"])
     assert set(r) == set(FIELDS)
     filled = {k for k, v in r.items() if v is not None}
-    assert filled == set(FIELDS) - {"reason"}
+    assert filled == set(FIELDS) - {"reason", "model_choice"}
     assert json.loads(r["settings"])["extra_lines"] == "drop" and r["score"] == "87.5"
 
 

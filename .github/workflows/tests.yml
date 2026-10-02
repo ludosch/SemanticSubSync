@@ -36,37 +36,40 @@ jobs:
       - name: Unit tests
         run: uv run pytest -q
 
-      - name: Real model (FP16, downloaded on first use)
+      - name: Real models (static and FP16 minilm, downloaded on first use)
         env:
           SEMSYNC_TEST_MODEL: "1"
         run: uv run --extra model pytest -m model -q
 
-      - name: Build the int8 model, then run the same tests with it
+      - name: Build the int8 minilm, then run the same tests with it
         env:
           SEMSYNC_TEST_MODEL: "1"
-          SEMSYNC_MODEL_DIR: ${{ runner.temp }}/minilm-int8
+          SEMSYNC_MODEL_DIR: ${{ runner.temp }}/models
         run: |
-          uv run --extra model --with onnx python tools/quantize_model.py "$SEMSYNC_MODEL_DIR"
+          uv run --extra model --with onnx python tools/quantize_model.py "$SEMSYNC_MODEL_DIR/minilm"
           uv run --extra model pytest -m model -q
 
-      - name: Command line on the lighthouse example
+      - name: Command line on the lighthouse example, with each model
         env:
-          SEMSYNC_MODEL_DIR: ${{ runner.temp }}/minilm-int8
+          SEMSYNC_MODEL_DIR: ${{ runner.temp }}/models
         run: |
           cd examples/lighthouse
-          uv run --extra model semantic-subsync 1-missing-scene/downloaded.fr.srt 1-missing-scene/reference.en.srt -o "$RUNNER_TEMP/out1.srt"
-          uv run --extra model semantic-subsync 2-extra-scene/downloaded.fr.srt 2-extra-scene/reference.en.srt -o "$RUNNER_TEMP/out2.srt"
-          set +e
-          uv run --extra model semantic-subsync 3-wrong-reference/downloaded.fr.srt 3-wrong-reference/reference.commentary.srt -o "$RUNNER_TEMP/out3.srt"
-          status=$?
-          set -e
-          test "$status" -eq 1                      # the wrong reference: unsure, nothing written
-          test ! -e "$RUNNER_TEMP/out3.srt"
+          for m in static minilm; do
+            uv run --extra model semantic-subsync --model $m 1-missing-scene/downloaded.fr.srt 1-missing-scene/reference.en.srt -o "$RUNNER_TEMP/$m-out1.srt"
+            uv run --extra model semantic-subsync --model $m 2-extra-scene/downloaded.fr.srt 2-extra-scene/reference.en.srt -o "$RUNNER_TEMP/$m-out2.srt"
+            set +e
+            uv run --extra model semantic-subsync --model $m 3-wrong-reference/downloaded.fr.srt 3-wrong-reference/reference.commentary.srt -o "$RUNNER_TEMP/$m-out3.srt"
+            status=$?
+            set -e
+            test "$status" -eq 1                    # the wrong reference: unsure, nothing written
+            test ! -e "$RUNNER_TEMP/$m-out3.srt"
+          done
           uv run python - <<'EOF'
           import os
           from semantic_subsync import media
           tmp = os.environ["RUNNER_TEMP"]
-          for case, out in (("1-missing-scene", "out1.srt"), ("2-extra-scene", "out2.srt")):
+          for case, out in [(c, f"{m}-{o}") for m in ("static", "minilm")
+                            for c, o in (("1-missing-scene", "out1.srt"), ("2-extra-scene", "out2.srt"))]:
               truth = {}
               for s, _, x in media.read_srt(f"{case}/truth.fr.srt"):
                   truth.setdefault(x, []).append(s)

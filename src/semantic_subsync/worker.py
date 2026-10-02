@@ -16,9 +16,14 @@ $SEMSYNC_DIR/queue (see integrations/bazarr/enqueue.py for Bazarr). For each job
      side               the subtitle is left as is, the correction is '<video>.resync.<lang...>.srt'.
      When no correction is needed (any more), the downloaded subtitle gets its name back and the
      extra file is removed.
+The sentence model is SEMSYNC_MODEL (static by default, or minilm). A model chosen by hand for one
+subtitle (`one --model`) is kept in state.db and used again for that subtitle on later runs, until
+another choice (`--model default` goes back to SEMSYNC_MODEL).
 
 Usage: semantic-subsync-worker run                          process the queue forever
-       semantic-subsync-worker one [--force] VIDEO SUBTITLE process one pair now
+       semantic-subsync-worker one [--force] [--model NAME] VIDEO SUBTITLE
+                                                            process one pair now; NAME: static, minilm
+                                                            or default (see above)
        semantic-subsync-worker backfill [ROOT]              enqueue every external .srt next to its video
        semantic-subsync-worker status [--fields] [WORD...] what state.db knows, for the paths containing every WORD
        semantic-subsync-worker history WORD...              every logged decision about the paths containing every
@@ -85,9 +90,9 @@ def is_own(path):
     return any(t in toks[1:-1] for t in OWN_TAGS)
 
 
-def settings():
-    return {"extra_lines": EXTRA_LINES, "min_coverage": core.MIN_COVERAGE,
-            "model": os.path.basename(os.environ.get("SEMSYNC_MODEL_DIR", "") or core.MODEL)}
+def settings(model):
+    return {"extra_lines": EXTRA_LINES, "min_coverage": core.MIN_COVERAGE, "model": model,
+            "min_sim": core.MODELS[model]["min_sim"]}
 
 
 def _write_atomic(path, cues=None, copy_of=None):
@@ -107,7 +112,11 @@ def _remove(path):
     return None
 
 
-def process(video, sub, origin="manual", force=False, score=None, state=None):
+def process(video, sub, origin="manual", force=False, score=None, state=None, model=None):
+    """`model`: a model chosen by hand for this subtitle (kept for later runs), "default" to
+    drop such a choice, None to keep what state.db says."""
+    if model not in (None, "default"):
+        core.check_model(model)
     t0 = time.time()
     rec = {"origin": origin, "video": video, "sub": sub}
     if not (os.path.isfile(video) and os.path.isfile(sub)) or not sub.lower().endswith(".srt") or is_own(sub):
@@ -115,15 +124,17 @@ def process(video, sub, origin="manual", force=False, score=None, state=None):
     own_state = state is None
     state = state or State(DB)
     try:
-        return _process(video, sub, rec, t0, force, score, state)
+        return _process(video, sub, rec, t0, force, score, state, model)
     finally:
         if own_state:
             state.close()
 
 
-def _process(video, sub, rec, t0, force, score, state):
+def _process(video, sub, rec, t0, force, score, state, model):
     replaced, side = tagged_path(video, sub, REPLACED), tagged_path(video, sub, RESYNC)
     row = state.get(sub)
+    choice = (row or {}).get("model_choice") if model is None else (None if model == "default" else model)
+    use = choice or core.DEFAULT_MODEL
     cur = sha256(sub)
     # Where is the downloaded subtitle? In replace mode, `sub` may hold our own correction and
     # the download sits in the .replaced file; a new download overwrites `sub` (another hash).
@@ -133,13 +144,14 @@ def _process(video, sub, rec, t0, force, score, state):
     vsize, vmtime = video_stamp(video)
     if (not force and row and row["status"] != "error" and row["input_sha256"] == src_sha
             and (row["video_size"], row["video_mtime"]) == (vsize, vmtime) and row["output_mode"] == OUTPUT
+            and (model is None or (row["model"], row["model_choice"]) == (use, choice))
             and cur in (row["input_sha256"], row["output_sha256"])):
         return log({**rec, "status": "unchanged", "last": row["status"], "processed_at": row["processed_at"]})
 
     lang, kind = media.language_key(media.language_of(sub)), media.kind_of(sub)
     entry = {**rec, "lang": lang, "kind": kind, "input_sha256": src_sha, "input_size": os.path.getsize(source),
              "video_size": vsize, "video_mtime": vmtime, "output_mode": OUTPUT, "engine_version": __version__,
-             "settings": settings(), "score": score}
+             "model": use, "model_choice": choice, "settings": settings(use), "score": score}
 
     def settle(status, out=None, **info):
         """Put the files in their final state; record and log the decision."""
@@ -179,7 +191,7 @@ def _process(video, sub, rec, t0, force, score, state):
     if found is None:
         return settle("no_reference")
     ref, ref_desc = found
-    status, out, st = core.resync(media.read_srt(source), ref, p={**core.P, "extra_lines": EXTRA_LINES})
+    status, out, st = core.resync(media.read_srt(source), ref, p={"extra_lines": EXTRA_LINES}, model=use)
     info = {"reference": ref_desc, "coverage": st.get("coverage"), "segments": st.get("segments"),
             "max_abs_offset": st.get("max_abs_offset"), "dropped": st.get("dropped"), "seg": segments(st)}
     if status == "unsure":
@@ -198,15 +210,15 @@ def segments(st):
 
 
 def unload_model():
-    """The model takes ~0.5 GB: free it while the queue is empty."""
-    if core._model is not None:
-        core._model = None; core._cache.clear(); gc.collect()
+    """A model takes 0.2 to 0.5 GB: free it while the queue is empty."""
+    if core._models:
+        core._models.clear(); core._cache.clear(); gc.collect()
 
 
 def run():
     os.makedirs(QUEUE, exist_ok=True); os.makedirs(FAILED, exist_ok=True)
     log({"status": "worker_started", "version": __version__, "output": OUTPUT, "extra_lines": EXTRA_LINES,
-         "model": os.environ.get("SEMSYNC_MODEL_DIR")})
+         "model": core.DEFAULT_MODEL, "model_dir": os.environ.get("SEMSYNC_MODEL_DIR")})
     state = State(DB)
     while True:
         jobs = sorted((os.path.join(QUEUE, j) for j in os.listdir(QUEUE) if j.endswith(".job")), key=os.path.getmtime)
@@ -215,7 +227,8 @@ def run():
         for job in jobs:
             try:
                 j = json.load(open(job, encoding="utf-8"))
-                process(j["video"], j["sub"], j.get("origin", "bazarr"), j.get("force", False), j.get("score"), state)
+                process(j["video"], j["sub"], j.get("origin", "bazarr"), j.get("force", False), j.get("score"), state,
+                        j.get("model"))
                 os.remove(job)
             except Exception as e:
                 log({"status": "error", "job": os.path.basename(job), "error": repr(e), "trace": traceback.format_exc()[-800:]})
@@ -278,7 +291,7 @@ def history(terms):
     for sub, recs in groups.items():
         print(sub)
         for r in recs:
-            facts = [f"{k}={r[k]}" for k in ("origin", "reference", "coverage", "segments", "max_abs_offset",
+            facts = [f"{k}={r[k]}" for k in ("origin", "model", "reference", "coverage", "segments", "max_abs_offset",
                                              "dropped", "reason", "engine_version", "secs") if r.get(k) is not None]
             print(f"  {r['ts']}  {r['status']}" + ("\n      " + "  ".join(facts) if facts else ""))
             for s in r.get("seg") or []:
@@ -300,8 +313,11 @@ def main():
     elif cmd == "one":
         os.makedirs(BASE, exist_ok=True)
         force = "--force" in rest
+        model = None
+        if "--model" in rest:
+            i = rest.index("--model"); model = rest[i + 1]; del rest[i:i + 2]
         video, sub = [a for a in rest if a != "--force"]
-        process(video, sub, force=force)
+        process(video, sub, force=force, model=model)
     elif cmd == "backfill":
         backfill(rest[0] if rest else "/data/media")
     elif cmd == "status":

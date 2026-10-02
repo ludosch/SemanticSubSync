@@ -93,7 +93,9 @@ services:
     user: "1000:1000"             # same owner as your media files
     environment:
       - SEMSYNC_DIR=/data/.semsync
-      - FASTEMBED_CACHE_PATH=/models   # the model is downloaded here on first use
+      - SEMSYNC_MODEL_DIR=/models      # local model copies (see below)
+      - HF_HOME=/models/hf             # a model without a local copy is downloaded here on first use
+      - FASTEMBED_CACHE_PATH=/models/hf
     volumes:
       - /path/to/data:/data          # same mount as in the Bazarr container
       - ./models:/models
@@ -101,12 +103,14 @@ services:
     restart: unless-stopped
 ```
 
-On a small CPU, make the int8 model once with
-[`tools/quantize_model.py`](../../tools/quantize_model.py), put it in `./models/minilm-int8`,
-and add `SEMSYNC_MODEL_DIR=/models/minilm-int8`.
+The default model (`static`) is downloaded on first use (434 MB). To run offline, put its
+`tokenizer.json` and `model.safetensors` (from the `0_StaticEmbedding` folder of the model) in
+`./models/static`. If you also want `minilm` on a small CPU, make its int8 copy once with
+[`tools/quantize_model.py`](../../tools/quantize_model.py) into `./models/minilm`.
 
 | Variable | Default | |
 |---|---|---|
+| `SEMSYNC_MODEL` | `static` | Sentence model: `static` or `minilm` (see [Model](../../README.md#model)) |
 | `SEMSYNC_OUTPUT` | `replace` | `replace`: the correction takes the subtitle's name, the download is kept as `.replaced`. `side`: the download is left as is, the correction is written as `.resync` |
 | `SEMSYNC_EXTRA_LINES` | `drop` | Lines the video has no room for (a translator credit, a recap or a scene that your video lacks) are removed. `keep` leaves them where nothing is shown nor said, a block of consecutive lines whole or not at all |
 | `SEMSYNC_LOG_MAX_MB` | `10` | Size limit of the log; its oldest entries are deleted beyond it (see [Logs](#logs)). `0`: no limit |
@@ -192,3 +196,13 @@ docker exec semantic-subsync semantic-subsync-worker one "/data/media/Movie/Movi
 ```
 
 `one --force` checks it again even if nothing changed.
+
+**Another model for one subtitle.** When a result is unsure or badly corrected, try the other
+model on that subtitle:
+
+```bash
+docker exec semantic-subsync semantic-subsync-worker one --model minilm "/data/media/Movie/Movie.mkv" "/data/media/Movie/Movie.fr.srt"
+```
+
+The choice is kept in `state.db`: a later download of that subtitle is processed with the same
+model. `--model default` goes back to `SEMSYNC_MODEL`.

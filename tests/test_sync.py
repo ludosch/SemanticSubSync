@@ -8,13 +8,13 @@ import copy
 import pytest
 
 from semantic_subsync import core
-from synth import accuracy, cut, dialogue, fake_embed, ref_cues, tgt_cues
+from synth import MIN_SIM, accuracy, cut, dialogue, fake_embed, ref_cues, tgt_cues
 
 PAL = 25 / 23.976 - 1          # +4.27 %: 23.976 fps subtitle on a 25 fps (PAL) video
 
 
 def run(tgt, ref, **p):
-    return core.sync(tgt, ref, p={**core.P, **p}, embed_fn=fake_embed)
+    return core.sync(tgt, ref, p={"min_sim": MIN_SIM, **p}, embed_fn=fake_embed)
 
 
 def piecewise(*steps):

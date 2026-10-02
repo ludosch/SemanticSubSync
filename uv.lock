@@ -969,7 +969,7 @@ wheels = [
 
 [[package]]
 name = "semantic-subsync"
-version = "0.10.1.dev0"
+version = "0.11.0.dev0"
 source = { editable = "." }
 dependencies = [
     { name = "charset-normalizer" },
@@ -980,6 +980,8 @@ dependencies = [
 [package.optional-dependencies]
 model = [
     { name = "fastembed" },
+    { name = "huggingface-hub" },
+    { name = "tokenizers" },
 ]
 
 [package.dev-dependencies]
@@ -991,7 +993,9 @@ dev = [
 requires-dist = [
     { name = "charset-normalizer", specifier = ">=3" },
     { name = "fastembed", marker = "extra == 'model'", specifier = ">=0.8" },
+    { name = "huggingface-hub", marker = "extra == 'model'", specifier = ">=0.24" },
     { name = "numpy", specifier = ">=2" },
+    { name = "tokenizers", marker = "extra == 'model'", specifier = ">=0.20" },
 ]
 provides-extras = ["model"]
 
