@@ -9,6 +9,7 @@ something under [Unreleased], X.Y.Z above the current version. Then:
   - CHANGELOG.md: the [Unreleased] entries move under "## [X.Y.Z] - <today>", [Unreleased] is
     left empty above it;
   - README.md and README.fr.md: the version in the `gh release download` / `docker load` example;
+  - the Jellyfin plugin: its version (X.Y.Z.0) and the engine release it installs (X.Y.Z);
   - unit tests, then a commit "Release vX.Y.Z" and an annotated tag vX.Y.Z.
 The push (which starts the release workflow) is printed, to run after a last look.
 """
@@ -19,6 +20,8 @@ ROOT = Path(__file__).resolve().parents[1]
 INIT = ROOT / "src/semantic_subsync/__init__.py"
 CHANGELOG = ROOT / "CHANGELOG.md"
 READMES = [ROOT / "README.md", ROOT / "README.fr.md"]
+PLUGIN = ROOT / "integrations/jellyfin"
+PLUGIN_FILES = [PLUGIN / "Directory.Build.props", PLUGIN / "Jellyfin.Plugin.SemanticSubSync/Engine/EngineInstaller.cs"]
 VERSION = re.compile(r'^__version__ = "([^"]+)"$', re.M)
 SEMVER = re.compile(r"^\d+\.\d+\.\d+$")
 
@@ -45,6 +48,12 @@ def bump_readme(text, version):
     semantic-subsync-X.Y.Z-docker-....tar.gz)."""
     text = re.sub(r"(gh release download v)\d+\.\d+\.\d+", rf"\g<1>{version}", text)
     return re.sub(r"(semantic-subsync-)\d+\.\d+\.\d+(-docker-)", rf"\g<1>{version}\g<2>", text)
+
+
+def bump_plugin(text, version):
+    """The Jellyfin plugin's version (X.Y.Z.0) and the engine release it installs (EngineVersion X.Y.Z)."""
+    text = re.sub(r"(<(?:Assembly|File)?Version>)\d+\.\d+\.\d+\.\d+(</)", rf"\g<1>{version}.0\g<2>", text)
+    return re.sub(r'(EngineVersion = ")\d+\.\d+\.\d+(")', rf"\g<1>{version}\g<2>", text)
 
 
 def check_notes(version, text=None):
@@ -103,6 +112,7 @@ def main(argv):
     changes = {INIT: VERSION.sub(f'__version__ = "{version}"', INIT.read_text(encoding="utf-8")),
                CHANGELOG: promote(CHANGELOG.read_text(encoding="utf-8"), version, today)}
     changes.update({r: bump_readme(r.read_text(encoding="utf-8"), version) for r in READMES})
+    changes.update({p: bump_plugin(p.read_text(encoding="utf-8"), version) for p in PLUGIN_FILES})
     for path, new in changes.items():
         old = path.read_text(encoding="utf-8")
         sys.stdout.writelines(difflib.unified_diff(old.splitlines(True), new.splitlines(True),
