@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-10-02
+
 ### Added
 - A second, much faster sentence model, `static`
   (static-similarity-mrl-multilingual-v1, first 512 dimensions), now the default; `minilm`

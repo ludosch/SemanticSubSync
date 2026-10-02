@@ -252,8 +252,8 @@ Each [release](https://github.com/ludosch/SemanticSubSync/releases) also carries
 package and a Docker image for amd64 and arm64, to load with `docker load`:
 
 ```bash
-gh release download v0.10.0 -R ludosch/SemanticSubSync -p "*docker-amd64*"
-docker load -i semantic-subsync-0.10.0-docker-amd64.tar.gz
+gh release download v0.11.0 -R ludosch/SemanticSubSync -p "*docker-amd64*"
+docker load -i semantic-subsync-0.11.0-docker-amd64.tar.gz
 ```
 
 ## Usage
