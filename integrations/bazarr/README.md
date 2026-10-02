@@ -75,11 +75,10 @@ In **Settings → Subtitles**:
   `python3` available inside the Bazarr container. Bazarr runs the command without a shell and
   passes each `{{variable}}` as one argument, so paths with spaces are safe.
 - **Post-processing thresholds** (series and movies): `100` checks every subtitle except perfect
-  matches. Lower it to check only the poorer ones. Note that in our tests the score did not
-  predict sync well: subtitles at 69 % were in sync while one at 94 % was off by 44 s.
-- **Automatic subtitles synchronization** (Bazarr's own ffsubsync): we recommend turning it
-  off, so that the downloaded file stays as published and the worker compares it with the
-  original.
+  matches. Lower it to check only the poorer ones. The score is a poor guide to sync: on the
+  files tested, subtitles at 69 % were in sync while one at 94 % was off by 44 s.
+- **Automatic subtitles synchronization** (Bazarr's own ffsubsync): turn it off, so that the
+  downloaded file stays as published and the worker compares it with the original.
 
 ### 4. The worker
 
@@ -151,7 +150,7 @@ Each job line holds:
 | `no_reference` | No embedded text subtitle with at least 20 lines |
 | `redundant` | The video embeds a text subtitle of the same language and kind |
 | `unchanged` | Already processed, nothing changed since |
-| `skipped` | Missing file, not an `.srt`, or one of our own files (`.replaced`, `.resync`) |
+| `skipped` | Missing file, not an `.srt`, or one of the worker's own files (`.replaced`, `.resync`) |
 | `error` | Unexpected failure, with the end of the traceback; the job is moved to `/data/.semsync/failed` |
 
 Everything logged about one episode or movie, oldest first, in a readable form. A path must

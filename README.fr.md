@@ -38,8 +38,8 @@ Résultat : un sous-titre qui dérive, ou qui est juste pendant 20 minutes puis 
 4 secondes.
 
 Les outils habituels se calent sur l'**audio** (ffsubsync, alass en mode audio) ou sur le
-**rythme** d'un autre sous-titre (alass, ffsubsync avec un sous-titre de référence). Dans nos
-essais :
+**rythme** d'un autre sous-titre (alass, ffsubsync avec un sous-titre de référence). Sur le
+benchmark ci-dessous :
 
 - ils ont souvent échoué sur les coupes et les scènes ajoutées ;
 - ils **signalaient rarement leurs échecs** : un sous-titre décalé d'une minute ou plus
@@ -152,9 +152,9 @@ toujours le même résultat.
 
 ## Résultats
 
-Ces chiffres viennent de la vidéothèque de l'auteur. Ils montrent comment l'outil s'y est
-comporté, pas ce qu'il fera sur n'importe quelle vidéo : avec d'autres fichiers, d'autres
-langues ou un autre matériel, ils seront différents.
+Ces chiffres décrivent le benchmark et les jeux de données ci-dessous. Ils montrent comment
+l'outil s'est comporté sur ces fichiers, pas ce qu'il fera sur n'importe quelle vidéo : avec
+d'autres fichiers, d'autres langues ou un autre matériel, ils seront différents.
 
 Ils ont été mesurés avec le modèle minilm. Le modèle static, celui par défaut depuis la 0.11, a
 été repassé sur le même benchmark et les mêmes jeux de données réels : il a réussi autant de cas
@@ -188,14 +188,21 @@ référence, SemanticSubSync a ignoré (pas sûr) ceux où il aurait fait des d�
 ffsubsync 29 / 44, alass 24 / 44, subaligner 2 / 44, sans aucun signal de confiance en cas
 d'échec.
 
-**Vitesse** sur le NAS de l'auteur (Celeron J4025, 2 cœurs), avec le modèle minilm int8 (voir
-[Modèle](#modèle)) : environ 85 s et 590 Mo de RAM au maximum pour un film complet. Elle dépend
-du matériel et du nombre de répliques.
+**Vitesse** sur un NAS avec un Celeron J4025 à 2 cœurs, pour un film complet (vidéo de 9,7 Go,
+1528 répliques) :
+
+| Modèle (voir [Modèle](#modèle)) | Durée | RAM au maximum |
+|---|---|---|
+| static | environ 97 s | 680 Mo |
+| minilm int8 | environ 175 s | 620 Mo |
+
+Avec static, l'essentiel du temps sert à extraire le sous-titre intégré de la vidéo (ffmpeg).
+Elle dépend du matériel, de la taille de la vidéo et du nombre de répliques.
 
 ### Jeux de données réels
 
 Le benchmark ci-dessus part de pistes correctes. Pour voir le comportement sur des fichiers tels
-qu'on les trouve en ligne, l'auteur a utilisé des jeux de données réels :
+qu'on les trouve en ligne, l'outil a aussi été passé sur des jeux de données réels :
 
 - 66 sous-titres téléchargés sur un site public de sous-titres, pour 8 épisodes de séries ;
 - 16 langues : allemand, anglais, arabe, chinois, espagnol, français, grec, hongrois, italien,
@@ -320,10 +327,10 @@ Deux modèles de phrases multilingues, tous deux publiés par
 
 | Nom | Modèle | |
 |---|---|---|
-| `static` (par défaut) | [static-similarity-mrl-multilingual-v1](https://huggingface.co/sentence-transformers/static-similarity-mrl-multilingual-v1), 512 premières dimensions | Moyenne de vecteurs de mots, aucun réseau de neurones à exécuter : environ 100 fois plus rapide que minilm sur un processeur |
+| `static` (par défaut) | [static-similarity-mrl-multilingual-v1](https://huggingface.co/sentence-transformers/static-similarity-mrl-multilingual-v1), 512 premières dimensions | Moyenne de vecteurs de mots, aucun réseau de neurones à exécuter : sur le benchmark, ses vecteurs ont pris environ 1 % du temps de minilm (voir la vitesse sur des fichiers entiers dans [Benchmark](#benchmark-sur-pistes-intégrées)) |
 | `minilm` | [paraphrase-multilingual-MiniLM-L12-v2](https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2), via [fastembed](https://github.com/qdrant/fastembed) | Un petit transformer : plus lent, un peu meilleur sur certains cas difficiles |
 
-Sur le benchmark et les jeux de données de l'auteur, les deux ont pris les mêmes décisions ;
+Sur le benchmark et les jeux de données réels, les deux ont pris les mêmes décisions ;
 minilm a mieux corrigé quelques fichiers difficiles (par exemple un changement de fréquence
 d'images sur un autre montage). Le modèle se choisit avec `--model`, `SEMSYNC_MODEL` ou, pour un
 seul sous-titre dans le worker, `one --model` (voir le
@@ -337,8 +344,8 @@ seuil de similarité, fixé dans le code.
 | `SEMSYNC_CACHE` | Dossier facultatif où les vecteurs sont mis en cache sur disque |
 
 **minilm int8.** [`tools/quantize_model.py`](tools/quantize_model.py) produit une copie int8 de
-112 Mo. Sur le NAS de l'auteur, elle était environ 40 % plus rapide et utilisait 2,5 fois moins
-de RAM, avec les mêmes résultats.
+112 Mo. Sur un NAS avec un Celeron J4025 à 2 cœurs, elle était environ 40 % plus rapide que le
+minilm d'origine et utilisait 2,5 fois moins de RAM, avec les mêmes résultats.
 
 **Langues.** Les deux sous-titres doivent être dans des langues sur lesquelles le modèle a été
 entraîné. La fiche de minilm les liste ainsi (celle de static donne les mêmes, avec zh pour les

@@ -136,7 +136,7 @@ def _process(video, sub, rec, t0, force, score, state, model):
     choice = (row or {}).get("model_choice") if model is None else (None if model == "default" else model)
     use = choice or core.DEFAULT_MODEL
     cur = sha256(sub)
-    # Where is the downloaded subtitle? In replace mode, `sub` may hold our own correction and
+    # Where is the downloaded subtitle? In replace mode, `sub` may hold the worker's own correction and
     # the download sits in the .replaced file; a new download overwrites `sub` (another hash).
     ours = bool(row and row["output_sha256"] == cur and row["output_path"] == sub)
     source = replaced if ours and os.path.isfile(replaced) else sub

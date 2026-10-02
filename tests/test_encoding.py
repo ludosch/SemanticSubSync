@@ -1,5 +1,5 @@
-"""Reading subtitles that are not UTF-8 (most older downloads: 47 of 66 files in the author's
-corpus). A single-byte code page decodes any bytes without error, so the language must pick it."""
+"""Reading subtitles that are not UTF-8 (most older downloads: 47 of 66 files in the real-world
+datasets). A single-byte code page decodes any bytes without error, so the language must pick it."""
 import pytest
 
 from semantic_subsync import media

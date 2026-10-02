@@ -196,7 +196,7 @@ def test_force_starts_again_from_the_download(env):
     worker.process(env["video"], env["sub"], force=True)
     rec = last_log(env)
     assert rec["status"] == "corrected"
-    assert replaced_of(env).read_bytes() == before                      # not our own output
+    assert replaced_of(env).read_bytes() == before                      # not the worker's own output
     assert row(env["sub"])["runs"] == 2
 
 

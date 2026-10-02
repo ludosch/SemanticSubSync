@@ -32,8 +32,8 @@ def parser():
                          "drop them all (default), or keep them where nothing is shown nor said, "
                          "a block of consecutive lines whole or not at all")
     ap.add_argument("--model", choices=list(core.MODELS), default=core.DEFAULT_MODEL,
-                    help=f"sentence model (default {core.DEFAULT_MODEL}, or $SEMSYNC_MODEL): static is about "
-                         "100 times faster, minilm is slower and a little better on some hard cases")
+                    help=f"sentence model (default {core.DEFAULT_MODEL}, or $SEMSYNC_MODEL): static is much faster, "
+                         "minilm is slower and a little better on some hard cases")
     ap.add_argument("--min-coverage", type=float, default=core.MIN_COVERAGE, metavar="X",
                     help=f"leave the file alone below this share of anchored lines (default {core.MIN_COVERAGE})")
     ap.add_argument("--json", action="store_true", help="print the decision and statistics as JSON")

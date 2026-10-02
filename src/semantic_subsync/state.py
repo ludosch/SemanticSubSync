@@ -25,7 +25,7 @@ FIELDS = {
     "input_size": "its size in bytes",
     "output_mode": "replace or side",
     "output_path": "file holding the correction (the subtitle path itself in replace mode)",
-    "output_sha256": "hash of the correction, to recognise our own file later",
+    "output_sha256": "hash of the correction, to recognise the worker's own file later",
     "replaced_path": "where the downloaded subtitle was kept (replace mode)",
     "video_size": "video size when processed (a replaced video triggers a new run)",
     "video_mtime": "video modification time when processed",

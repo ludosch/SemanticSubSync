@@ -36,7 +36,7 @@ video:
 The result is a subtitle that drifts, or that is fine for 20 minutes and then off by 4 seconds.
 
 The usual tools align on the **audio** (ffsubsync, alass in audio mode) or on the **timing
-pattern** of another subtitle (alass, ffsubsync with a subtitle reference). In our tests:
+pattern** of another subtitle (alass, ffsubsync with a subtitle reference). On the benchmark below:
 
 - they often failed on cuts and inserted scenes;
 - they **rarely said when they failed**: a subtitle moved by a minute or more could still be
@@ -144,9 +144,9 @@ the same output.
 
 ## Results
 
-These figures come from the author's own library. They show how the tool behaved there, not
-what it will do on any video: on other files, other languages or other hardware, they will
-differ.
+These figures describe the benchmark and the datasets below. They show how the tool behaved on
+those files, not what it will do on any video: on other files, other languages or other
+hardware, they will differ.
 
 They were measured with the minilm model. The static model, the default since 0.11, was run
 again on the same benchmark and on the same real-world datasets: it passed as many benchmark
@@ -177,14 +177,20 @@ SemanticSubSync left alone (unsure) the ones where it would have done damage:
 **Audio-only tools,** for comparison, on the same kind of distortions: ffsubsync 29 / 44,
 alass 24 / 44, subaligner 2 / 44, with no confidence signal on failures.
 
-**Speed** on the author's NAS (2-core Celeron J4025), with the int8 minilm model (see
-[Model](#model)): about 85 s and 590 MB of RAM at peak for a full movie. It depends on the
-hardware and on the number of lines.
+**Speed** on a NAS with a 2-core Celeron J4025, for a full movie (9.7 GB video, 1528 lines):
+
+| Model (see [Model](#model)) | Time | RAM at peak |
+|---|---|---|
+| static | about 97 s | 680 MB |
+| int8 minilm | about 175 s | 620 MB |
+
+With static, most of the time goes into reading the embedded subtitle out of the video (ffmpeg).
+It depends on the hardware, the size of the video and the number of lines.
 
 ### Real-world datasets
 
 The benchmark above starts from correct tracks. To see the behaviour on files as they are found
-online, the author used real-world datasets:
+online, the tool was also run on real-world datasets:
 
 - 66 subtitles downloaded from a public subtitle site, for 8 TV episodes;
 - 16 languages: Arabic, Chinese, English, French, German, Greek, Hungarian, Italian, Japanese,
@@ -307,11 +313,11 @@ Two multilingual sentence models, both published by
 
 | Name | Model | |
 |---|---|---|
-| `static` (default) | [static-similarity-mrl-multilingual-v1](https://huggingface.co/sentence-transformers/static-similarity-mrl-multilingual-v1), first 512 dimensions | Averaged word vectors, no neural network to run: about 100 times faster than minilm on a CPU |
+| `static` (default) | [static-similarity-mrl-multilingual-v1](https://huggingface.co/sentence-transformers/static-similarity-mrl-multilingual-v1), first 512 dimensions | Averaged word vectors, no neural network to run: on the benchmark, its vectors took about 1 % of minilm's time (see [Speed](#benchmark-on-embedded-tracks) for whole files) |
 | `minilm` | [paraphrase-multilingual-MiniLM-L12-v2](https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2), through [fastembed](https://github.com/qdrant/fastembed) | A small transformer: slower, a little better on some hard cases |
 
-On the author's benchmark and datasets the two made the same decisions; minilm corrected a few
-hard files better (a frame-rate change on a different cut, for instance). Choose the model with
+On the benchmark and the real-world datasets the two made the same decisions; minilm corrected
+a few hard files better (a frame-rate change on a different cut, for instance). Choose the model with
 `--model`, `SEMSYNC_MODEL`, or, for one subtitle in the worker, `one --model` (see the
 [Bazarr guide](integrations/bazarr/README.md#test-one-pair-by-hand)). Each model has its own
 similarity threshold, set in the code.
@@ -323,7 +329,8 @@ similarity threshold, set in the code.
 | `SEMSYNC_CACHE` | Optional folder where embeddings are cached on disk |
 
 **int8 minilm.** [`tools/quantize_model.py`](tools/quantize_model.py) builds a 112 MB int8 copy.
-On the author's NAS it was about 40 % faster and used 2.5 times less RAM, with the same results.
+On a NAS with a 2-core Celeron J4025 it was about 40 % faster than the original minilm and used
+2.5 times less RAM, with the same results.
 
 **Languages.** Both subtitles must be in languages the model was trained on. The minilm model
 card lists (the static one lists the same, with zh for both Chinese variants): ar, bg, ca, cs, da, de, el, en, es, et, fa, fi, fr, fr-ca, gl, gu, he, hi, hr, hu, hy,

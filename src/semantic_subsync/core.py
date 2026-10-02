@@ -17,7 +17,7 @@ import numpy as np
 # The sentence models. Their similarity scales differ, so the threshold for a candidate match
 # (min_sim) belongs to the model and is never chosen on its own.
 MODELS = {
-    # averaged static token vectors (no transformer): ~100x faster than minilm on a CPU, same
+    # averaged static token vectors (no transformer): its vectors take ~1 % of minilm's time, same
     # decisions on the benches; only the first `dims` dimensions are used (Matryoshka training)
     "static": dict(repo="sentence-transformers/static-similarity-mrl-multilingual-v1", min_sim=0.32, dims=512),
     # a small multilingual transformer: much slower, a little better on some hard cases
