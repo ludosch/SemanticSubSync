@@ -19,8 +19,11 @@ All notable changes to this project are documented here. The format follows
 - Worker: the log is limited to `SEMSYNC_LOG_MAX_MB` (default 10); beyond it, its oldest entries
   are deleted.
 - `tools/smoke_image.py`: the release checks that each image reads an embedded subtitle.
+- `tools/release.py`: prepares a release (version, changelog, README download commands, tests,
+  commit, tag); the release workflow refuses a tag whose version has no changelog notes.
 
 ### Changed
+- The package version is read from `src/semantic_subsync/__init__.py` only.
 - `SEMSYNC_MODEL_DIR` is now a folder with one sub-folder per model (`static/`, `minilm/`).
 - `core.P` no longer holds `min_sim`: use `core.params(model)`. `core.sync` and `core.resync`
   take `model=`.

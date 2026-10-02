@@ -18,12 +18,15 @@ jobs:
       - uses: astral-sh/setup-uv@v10.2.0
       - id: version
         run: |
-          version=$(uv run python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
+          version=$(uv run python -c "import semantic_subsync; print(semantic_subsync.__version__)")
           echo "version=$version" >> "$GITHUB_OUTPUT"
           if [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" != "v$version" ]; then
-            echo "Tag $GITHUB_REF_NAME does not match the version in pyproject.toml ($version)"
+            echo "Tag $GITHUB_REF_NAME does not match the package version ($version)"
             exit 1
           fi
+      - name: The changelog has notes for this version (checked before the image builds)
+        if: github.ref_type == 'tag'
+        run: uv run python tools/release.py --check-notes "${GITHUB_REF_NAME#v}"
       - run: uv build
       - uses: actions/upload-artifact@v7
         with:

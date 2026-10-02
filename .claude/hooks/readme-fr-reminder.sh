@@ -6,10 +6,12 @@ input=$(cat)
 hit=0
 # Edit / Write on the root README.md (not README.fr.md, not examples/*/README.md)
 printf '%s' "$input" | grep -qE '"file_path"[[:space:]]*:[[:space:]]*"[^"]*SemanticSubSync[\/]+README\.md"' && hit=1
-# Bash command that writes README.md: sed -i, a redirection, or a script that opens/writes it
+# Bash command that writes the root README.md: sed -i on it, a redirection or tee into it, or a
+# script that opens it for writing. Commands that only read it (cat, grep, sed -n) do not count.
+R='(^|[^.a-zA-Z/\\])(\.[\/\\]+)?README\.md'   # README.md, ./README.md; not README.fr.md nor x/README.md
+Q='\\*"(\.[\/\\]+)?README\.md\\*"'           # "README.md" as a quoted string (escaped in the hook JSON)
 if printf '%s' "$input" | grep -qE '"tool_name"[[:space:]]*:[[:space:]]*"Bash"' \
-   && printf '%s' "$input" | grep -qE '(^|[^.a-zA-Z])README\.md' \
-   && printf '%s' "$input" | grep -qE 'sed -i|>[[:space:]]*[^ ]*README\.md|\.write\(|open\(|mv |cp '; then
+   && printf '%s' "$input" | grep -qE "sed -i[^|;&]*$R|>>?[[:space:]]*$R|tee( -a)?[[:space:]]+$R|edit\($Q|open\($Q[^)]*w"; then
   hit=1
 fi
 if [ "$hit" = 1 ]; then

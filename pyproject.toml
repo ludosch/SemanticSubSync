@@ -1,6 +1,6 @@
 [project]
 name = "semantic-subsync"
-version = "0.11.0.dev0"
+dynamic = ["version"]
 description = "Re-time a subtitle on a reference subtitle in another language by matching cues on meaning."
 readme = "README.md"
 license = "MIT"
@@ -29,6 +29,9 @@ semantic-subsync-worker = "semantic_subsync.worker:main"
 
 [dependency-groups]
 dev = ["pytest>=8"]
+
+[tool.hatch.version]
+path = "src/semantic_subsync/__init__.py"
 
 [build-system]
 requires = ["hatchling"]
