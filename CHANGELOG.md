@@ -7,7 +7,9 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
-- Worker: `history TEXT` prints every logged decision about the paths containing TEXT.
+- Worker: `history WORD...` prints every logged decision about the subtitles whose path contains
+  every word (e.g. `history Ghosts S04E02`), grouped by subtitle with its full path; `status`
+  filters the same way.
 - Worker: the log is limited to `SEMSYNC_LOG_MAX_MB` (default 10); beyond it, its oldest entries
   are deleted.
 - `tools/smoke_image.py`: the release checks that each image reads an embedded subtitle.

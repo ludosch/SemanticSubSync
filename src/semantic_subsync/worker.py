@@ -20,8 +20,9 @@ $SEMSYNC_DIR/queue (see integrations/bazarr/enqueue.py for Bazarr). For each job
 Usage: semantic-subsync-worker run                          process the queue forever
        semantic-subsync-worker one [--force] VIDEO SUBTITLE process one pair now
        semantic-subsync-worker backfill [ROOT]              enqueue every external .srt next to its video
-       semantic-subsync-worker status [--fields] [TEXT]     what state.db knows (TEXT: filter on paths)
-       semantic-subsync-worker history TEXT                 every logged decision about paths containing TEXT
+       semantic-subsync-worker status [--fields] [WORD...] what state.db knows, for the paths containing every WORD
+       semantic-subsync-worker history WORD...              every logged decision about the paths containing every
+                                                            WORD, e.g. history Ghosts S04E02 fr
 """
 import gc, json, os, sys, time, traceback
 from semantic_subsync import __version__, core, media
@@ -240,40 +241,55 @@ def backfill(root):
     log({"status": "backfill_queued", "root": root, "jobs": n})
 
 
+def matches(path, terms):
+    """True when the path contains every term, whatever the case: `Ghosts S04E02` does not
+    match the S04E02 of another series."""
+    path = (path or "").lower()
+    return all(t.lower() in path for t in terms)
+
+
 def status(args):
     if "--fields" in args:
         for k, v in FIELDS.items():
             print(f"{k:16} {v}")
         return
-    rows = State(DB).all(next((a for a in args if not a.startswith("-")), None))
+    terms = [a for a in args if not a.startswith("-")]
+    rows = [r for r in State(DB).all() if matches(r["sub"], terms)]
     counts = {}
     for r in rows:
         counts[r["status"]] = counts.get(r["status"], 0) + 1
-        print(f"{r['processed_at']}  {r['status']:12} {os.path.basename(r['sub'])}")
+        print(f"{r['processed_at']}  {r['status']:12} {r['sub']}")
     print(json.dumps(counts))
 
 
-def history(text):
-    """Every log entry about the subtitles or videos whose path contains `text`, oldest first."""
+def history(terms):
+    """Every log entry about the subtitles whose path contains all `terms`, grouped by subtitle
+    (full path first, so the series, season and language are explicit), oldest first."""
     if not os.path.exists(LOG):
         return
+    groups = {}
     with open(LOG, encoding="utf-8") as f:
         for line in f:
             try:
                 r = json.loads(line)
             except ValueError:
                 continue
-            if text.lower() not in (r.get("sub", "") + r.get("video", "")).lower():
-                continue
-            head = f"{r['ts']}  {r['status']:12} {os.path.basename(r.get('sub', ''))}"
+            if r.get("sub") and matches(r["sub"], terms):
+                groups.setdefault(r["sub"], []).append(r)
+    for sub, recs in groups.items():
+        print(sub)
+        for r in recs:
             facts = [f"{k}={r[k]}" for k in ("origin", "reference", "coverage", "segments", "max_abs_offset",
                                              "dropped", "reason", "engine_version", "secs") if r.get(k) is not None]
-            print(head + ("\n    " + "  ".join(facts) if facts else ""))
+            print(f"  {r['ts']}  {r['status']}" + ("\n      " + "  ".join(facts) if facts else ""))
             for s in r.get("seg") or []:
-                print(f"    {s['from']:8.1f} s -> {s['to']:8.1f} s  offset {s['offset']:+.2f} s"
+                print(f"      {s['from']:8.1f} s -> {s['to']:8.1f} s  offset {s['offset']:+.2f} s"
                       + (f"  drift {s['drift_ppm']} ppm" if s.get("drift_ppm") else ""))
             for p in r.get("removed") or []:
-                print(f"    removed {os.path.basename(p)}")
+                print(f"      removed {os.path.basename(p)}")
+        print()
+    if len(groups) > 1:
+        print(f"{len(groups)} subtitles match: add words to narrow down (series, season, language)")
 
 
 def main():
@@ -292,7 +308,7 @@ def main():
     elif cmd == "status":
         status(rest)
     elif cmd == "history" and rest:
-        history(rest[0])
+        history(rest)
     else:
         sys.exit(__doc__)
 

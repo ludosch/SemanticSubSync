@@ -390,11 +390,35 @@ def test_history_shows_every_run_of_a_subtitle(env, capsys):
     worker.process(env["video"], env["sub"])
     worker.process(env["video"], env["sub"])
     capsys.readouterr()
-    worker.history("s01e01")
+    worker.history(["s01e01"])
     out = capsys.readouterr().out
+    assert out.startswith(env["sub"] + "\n")                            # full path: series, season, language
     assert "corrected" in out and "unchanged" in out and "offset -10.00 s" in out
-    worker.history("S02E05")
+    worker.history(["S02E05"])
     assert capsys.readouterr().out == ""
+
+
+def test_history_and_status_need_every_word(env, capsys):
+    """Two series with an S01E01: one word lists both, apart; more words single one out."""
+    other = env["tmp"] / "Other" / "Season 1"
+    other.mkdir(parents=True)
+    video2 = other / "Other - S01E01.mkv"
+    video2.write_bytes(b"other video")
+    sub2 = str(other / "Other - S01E01.fr.srt")
+    for v, s in ((env["video"], env["sub"]), (str(video2), sub2)):
+        write_late(env, s)
+        worker.process(v, s)
+    capsys.readouterr()
+    worker.history(["S01E01"])
+    out = capsys.readouterr().out
+    assert out.count("corrected") == 2 and env["sub"] in out and sub2 in out
+    assert "2 subtitles match" in out
+    worker.history(["other", "s01e01", "fr"])
+    out = capsys.readouterr().out
+    assert sub2 in out and env["sub"] not in out and "match" not in out
+    worker.status(["Other", "S01E01"])
+    out = capsys.readouterr().out
+    assert sub2 in out and env["sub"] not in out and '"corrected": 1' in out
 
 
 def test_log_past_its_limit_loses_its_oldest_entries_only(env):

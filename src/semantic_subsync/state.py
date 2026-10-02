@@ -82,11 +82,8 @@ class State:
                         list(row.values()))
         self.db.commit()
 
-    def all(self, like=None):
-        q, args = "SELECT * FROM subtitles", ()
-        if like:
-            q, args = q + " WHERE sub LIKE ? OR video LIKE ?", (f"%{like}%", f"%{like}%")
-        return [dict(r) for r in self.db.execute(q + " ORDER BY processed_at DESC", args)]
+    def all(self):
+        return [dict(r) for r in self.db.execute("SELECT * FROM subtitles ORDER BY processed_at DESC")]
 
     def close(self):
         self.db.close()

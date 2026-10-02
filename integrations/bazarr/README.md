@@ -150,11 +150,16 @@ Each job line holds:
 | `skipped` | Missing file, not an `.srt`, or one of our own files (`.replaced`, `.resync`) |
 | `error` | Unexpected failure, with the end of the traceback; the job is moved to `/data/.semsync/failed` |
 
-Everything logged about one episode or movie, oldest first, in a readable form:
+Everything logged about one episode or movie, oldest first, in a readable form. A path must
+contain every word given, so add the series name to an episode number (`S04E02` alone would
+list that episode of every series), and the end of the file name to keep one subtitle:
 
 ```bash
-docker exec semantic-subsync semantic-subsync-worker history "S04E02"
+docker exec semantic-subsync semantic-subsync-worker history Ghosts S04E02
+docker exec semantic-subsync semantic-subsync-worker history Ghosts S04E02 .fr.srt   # not .fr.hi.srt
 ```
+
+Each subtitle starts with its full path, so the series, season and language are explicit.
 
 The log never grows past `SEMSYNC_LOG_MAX_MB` (default 10, several thousand jobs): beyond it, the
 oldest entries are deleted and the newest half is kept. No archive copy is made. `0` turns the
@@ -168,7 +173,7 @@ cannot tell. List it with:
 
 ```bash
 docker exec semantic-subsync semantic-subsync-worker status            # one line per subtitle + counts
-docker exec semantic-subsync semantic-subsync-worker status "S04E02"   # filter on the paths
+docker exec semantic-subsync semantic-subsync-worker status Ghosts S04  # paths containing every word
 docker exec semantic-subsync semantic-subsync-worker status --fields  # what each column means
 ```
 
