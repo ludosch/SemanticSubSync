@@ -158,8 +158,8 @@ contain every word given, so add the series name to an episode number (`S04E02` 
 list that episode of every series), and the end of the file name to keep one subtitle:
 
 ```bash
-docker exec semantic-subsync semantic-subsync-worker history Ghosts S04E02
-docker exec semantic-subsync semantic-subsync-worker history Ghosts S04E02 .fr.srt   # not .fr.hi.srt
+docker exec semantic-subsync semantic-subsync-worker history Show S01E02
+docker exec semantic-subsync semantic-subsync-worker history Show S01E02 .fr.srt   # not .fr.hi.srt
 ```
 
 Each subtitle starts with its full path, so the series, season and language are explicit.
@@ -176,7 +176,7 @@ cannot tell. List it with:
 
 ```bash
 docker exec semantic-subsync semantic-subsync-worker status            # one line per subtitle + counts
-docker exec semantic-subsync semantic-subsync-worker status Ghosts S04  # paths containing every word
+docker exec semantic-subsync semantic-subsync-worker status Show S01  # paths containing every word
 docker exec semantic-subsync semantic-subsync-worker status --fields  # what each column means
 ```
 

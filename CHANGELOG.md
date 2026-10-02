@@ -14,7 +14,7 @@ All notable changes to this project are documented here. The format follows
   later runs of the subtitle; `--model default` drops it. Each model carries its own similarity
   threshold (`core.MODELS`).
 - Worker: `history WORD...` prints every logged decision about the subtitles whose path contains
-  every word (e.g. `history Ghosts S04E02`), grouped by subtitle with its full path; `status`
+  every word (e.g. `history Show S01E02`), grouped by subtitle with its full path; `status`
   filters the same way.
 - Worker: the log is limited to `SEMSYNC_LOG_MAX_MB` (default 10); beyond it, its oldest entries
   are deleted.

@@ -1,7 +1,7 @@
 """Bench on real downloaded subtitles, which have no ground truth.
 
 The corpus is a folder with one sub-folder per episode and an `index.json` listing its files:
-[{"path": "got/S02E03/fr_xxx.srt", "lang": "fr"}, ...]. Subtitles are copyrighted: keep the corpus
+[{"path": "show/S02E03/fr_xxx.srt", "lang": "fr"}, ...]. Subtitles are copyrighted: keep the corpus
 out of the repository. In each episode the first English file is the reference; every other file
 is aligned on it, then the reference on it (both directions).
 
