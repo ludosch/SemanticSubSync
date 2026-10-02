@@ -191,8 +191,9 @@ public sealed class SyncService : IDisposable
 
     private static string BaselinePath => Path.Combine(EngineInstaller.DataDir, "libraries.json");
 
-    /// <summary>The first time a library is seen as chosen, unless ProcessExisting is on, records its
-    /// subtitles as seen without processing them. Returns true when it did so.</summary>
+    /// <summary>The first time a library is seen, records its subtitles as existing ones: they are left
+    /// alone while ProcessExisting is off, and processed by the next runs once it is on (catch-up).
+    /// Returns true when it recorded some.</summary>
     public bool BaselineIfNew(Guid libraryId, IReadOnlyList<Video> videos)
     {
         lock (_seenLock)
@@ -206,19 +207,16 @@ public sealed class SyncService : IDisposable
             }
 
             var count = 0;
-            if (Plugin.Instance?.Configuration.ProcessExisting != true)
+            var seen = Seen();
+            foreach (var sub in videos.SelectMany(v => SubtitlesOf(v.Path)))
             {
-                var seen = Seen();
-                foreach (var sub in videos.SelectMany(v => SubtitlesOf(v.Path)))
-                {
-                    seen.TryAdd(sub, Fingerprint(sub));
-                    count++;
-                }
-
-                SaveSeen(seen);
-                _logger.LogInformation("SemanticSubSync: library {Library} chosen, {Count} existing subtitles recorded and left as they are",
-                    _library.GetItemById(libraryId)?.Name ?? libraryId.ToString(), count);
+                count += seen.TryAdd(sub, Existing + SizeAndDate(sub)) ? 1 : 0;
             }
+
+            SaveSeen(seen);
+            _logger.LogInformation("SemanticSubSync: library {Library}: {Count} existing subtitles recorded, {What}",
+                _library.GetItemById(libraryId)?.Name ?? libraryId.ToString(), count,
+                Plugin.Instance?.Configuration.ProcessExisting == true ? "to be processed (catch-up is on)" : "left as they are");
 
             File.WriteAllText(BaselinePath, JsonSerializer.Serialize(done));
             return count > 0;
@@ -243,18 +241,31 @@ public sealed class SyncService : IDisposable
     // ---- seen: (size, mtime, output mode) of each subtitle after its last run, so unchanged files cost
     // nothing. The engine's own state.db is the reference; this only avoids starting a process per file.
 
-    private static string Fingerprint(string path)
+    // A subtitle recorded when its library was first seen, never processed: "existing:<size>:<date>".
+    private const string Existing = "existing:";
+
+    private static string SizeAndDate(string path)
     {
         var fi = new FileInfo(path);
-        var mode = Plugin.Instance?.Configuration.OutputMode;
-        return string.Create(CultureInfo.InvariantCulture, $"{fi.Length}:{fi.LastWriteTimeUtc.Ticks}:{mode}");
+        return string.Create(CultureInfo.InvariantCulture, $"{fi.Length}:{fi.LastWriteTimeUtc.Ticks}");
     }
 
+    private static string Fingerprint(string path) => SizeAndDate(path) + ":" + Plugin.Instance?.Configuration.OutputMode;
+
+    /// <summary>Nothing to do for this subtitle: processed and unchanged since, or an existing one left
+    /// alone (unchanged, catch-up off). A changed file is processed whatever its past.</summary>
     private bool IsSeen(string sub)
     {
         lock (_seenLock)
         {
-            return Seen().TryGetValue(sub, out var fp) && fp == Fingerprint(sub);
+            if (!Seen().TryGetValue(sub, out var fp))
+            {
+                return false;
+            }
+
+            return fp.StartsWith(Existing, StringComparison.Ordinal)
+                ? Plugin.Instance?.Configuration.ProcessExisting != true && fp == Existing + SizeAndDate(sub)
+                : fp == Fingerprint(sub);
         }
     }
 

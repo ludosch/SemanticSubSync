@@ -13,7 +13,7 @@ semantic-subsync Movie.fr.srt Movie.mkv     # reference: the subtitle embedded i
 ```
 
 In Jellyfin, a [plugin](integrations/jellyfin/README.md) does it from the menu of a movie or an
-episode, and automatically for new subtitles in the libraries you choose.
+episode, and automatically for every new subtitle from its installation on.
 
 ## Where other tools fail
 
@@ -318,9 +318,10 @@ The engine knows nothing about media servers or subtitle managers. Integrations 
   automatically by a background worker and corrected when needed. The downloaded version stays
   available as an extra track, and every decision is logged.
 - [**Jellyfin**](integrations/jellyfin/README.md): a plugin that installs the engine itself. "Sync
-  subtitles" in the menu of a movie or an episode re-times its subtitles; in the libraries you
-  choose, new videos and new subtitle files are handled automatically. The item is refreshed so
-  the tracks show at once. No extra container; Jellyfin needs write access to the media folders.
+  subtitles" in the menu of a movie or an episode re-times its subtitles; from the installation on,
+  new videos and new subtitle files are handled automatically (the ones already there on request).
+  The item is refreshed so the tracks show at once. No extra container; Jellyfin needs write access
+  to the media folders.
 
 ## Model
 

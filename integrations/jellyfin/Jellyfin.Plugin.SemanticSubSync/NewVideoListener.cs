@@ -52,7 +52,7 @@ public sealed class NewVideoListener : IHostedService, IDisposable
 
     private void OnItemAdded(object? sender, ItemChangeEventArgs e)
     {
-        if (e.Item is Video { IsVirtualItem: false } && Plugin.Instance?.Configuration.Libraries.Length > 0)
+        if (e.Item is Video { IsVirtualItem: false } && Plugin.Instance is not null)
         {
             _pending[e.Item.Id] = 0;
             _timer.Change(Settle, Timeout.InfiniteTimeSpan);

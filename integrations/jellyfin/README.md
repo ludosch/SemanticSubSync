@@ -7,9 +7,8 @@ match the embedded subtitle, the file is left alone.
 ```
 new video, or new / changed .srt ──> plugin ──> semantic-subsync-worker one VIDEO SUB
                                                         │
-                       Movie.fr.srt                 the download, never modified
-                       Movie.resync.fr.default.srt  the correction, played by default (only when
-                                                    one was needed)
+                       Movie.fr.srt           corrected (keeps its name)
+                       Movie.replaced.fr.srt  the download, kept only when a correction was made
                                                         │
                                    item refreshed: Jellyfin shows the tracks at once
 ```
@@ -42,18 +41,21 @@ Manual install: unzip `jellyfin-plugin-semanticsubsync-<version>.zip` from a
 
 ## What it does
 
-Nothing happens on its own until you choose libraries.
+From the installation on, new subtitles are processed in every library; the ones already there are
+left as they are unless you ask for a catch-up.
 
 | When | What |
 |---|---|
 | **Sync subtitles** in the "..." menu of a movie or an episode (administrators) | All its external `.srt` files, now, in any library; the result shows at the bottom of the screen |
-| A movie or an episode is added to a chosen library | Its external `.srt` files, about 30 s after the scan adds it |
-| Scheduled task **Re-time new subtitles** (every 30 min, Dashboard > Scheduled Tasks) | In the chosen libraries, the `.srt` files added or changed since the last run, e.g. downloaded by Bazarr or by hand |
+| A movie or an episode is added | Its external `.srt` files, about 30 s after the scan adds it |
+| Scheduled task **Re-time new subtitles** (every 30 min, Dashboard > Scheduled Tasks) | The `.srt` files added or changed since the last run, e.g. downloaded by Bazarr or by hand |
 
-- **Choosing a library.** The subtitles already in it are recorded on the next run of the task and
-  left as they are; only the ones added later are processed. Tick *Also process the subtitles
-  already in a library when it is chosen* first to process everything (on a large library and a
-  small server, this can take hours).
+- **Subtitles already there.** The first run of the task after the installation (or after a library
+  is created) records the subtitles already in each library and leaves them as they are. Tick
+  *Also process the subtitles that were already there (catch-up)* to have the task process them
+  too, at any time (on a large library and a small server, this can take hours).
+- **Leaving a library out.** Untick it on the plugin page: nothing in it is processed
+  automatically; the menu entry still works there.
 - **One subtitle at a time**, at the lowest CPU priority, and **never while someone is watching**:
   the automatic work waits for playback to end. The menu entry runs at once.
 - A subtitle belongs to a video when its name starts with the video's name
@@ -67,11 +69,13 @@ Nothing happens on its own until you choose libraries.
 
 Dashboard > Plugins > SemanticSubSync:
 
-- **Automatic in these libraries**: none by default.
-- **Also process the subtitles already in a library when it is chosen.**
-- **Correction**: add the correction next to the download as `resync`, flagged so that Jellyfin
-  plays it by default (default: the download is never modified), or replace the subtitle and keep
-  the download as `replaced`.
+- **New subtitles, automatically, in these libraries**: all of them by default, including
+  libraries created later.
+- **Also process the subtitles that were already there (catch-up)**: off by default.
+- **Correction**: replace the subtitle and keep the download as `replaced` (default; Jellyfin then
+  makes the same choice as for the download, and a newer download from Bazarr takes the name
+  back), or add the correction next to the download as `resync`, flagged so that Jellyfin plays it
+  by default.
 - **Engine source** (advanced): a wheel path or URL to install instead of the release the plugin
   was built for, e.g. `file:///config/semantic_subsync-0.12.0-py3-none-any.whl`.
 

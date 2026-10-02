@@ -13,8 +13,8 @@ semantic-subsync Film.fr.srt Film.mkv     # référence : le sous-titre intégr�
 ```
 
 Dans Jellyfin, un [plugin](integrations/jellyfin/README.md) (en anglais) le fait depuis le menu
-d'un film ou d'un épisode, et automatiquement pour les nouveaux sous-titres des bibliothèques
-choisies.
+d'un film ou d'un épisode, et automatiquement pour chaque nouveau sous-titre dès son
+installation.
 
 ## Là où les autres outils échouent
 
@@ -332,9 +332,10 @@ dans [`integrations/`](integrations) :
   téléchargée reste disponible comme piste supplémentaire, et chaque décision est journalisée.
 - [**Jellyfin**](integrations/jellyfin/README.md) (en anglais) : un plugin qui installe lui-même le
   moteur. « Sync subtitles » dans le menu d'un film ou d'un épisode resynchronise ses sous-titres ;
-  dans les bibliothèques choisies, les nouvelles vidéos et les nouveaux fichiers de sous-titres sont
-  traités automatiquement. L'élément est rafraîchi pour que les pistes apparaissent tout de suite. Pas de
-  conteneur en plus ; Jellyfin doit pouvoir écrire dans les dossiers des médias.
+  dès l'installation, les nouvelles vidéos et les nouveaux fichiers de sous-titres sont traités
+  automatiquement (ceux déjà présents, sur demande). L'élément est rafraîchi pour que les pistes
+  apparaissent tout de suite. Pas de conteneur en plus ; Jellyfin doit pouvoir écrire dans les
+  dossiers des médias.
 
 ## Modèle
 
