@@ -2,14 +2,21 @@
 
 # SemanticSubSync
 
-Recale un sous-titre en comparant **ce qui est dit**, réplique par réplique, avec un sous-titre
-déjà synchronisé, même quand les deux sont dans des langues différentes.
+Recale un sous-titre téléchargé dans les cas où les outils de synchronisation habituels
+échouent : une scène ajoutée ou coupée, une autre cadence d'images, ou les deux. Il compare
+**ce qui est dit**, réplique par réplique, avec un sous-titre déjà synchronisé (en général celui
+intégré à la vidéo), même dans une autre langue. Quand cette référence ne correspond pas, il le
+dit et laisse le fichier tel quel au lieu d'annoncer une réussite.
 
 ```bash
 semantic-subsync Film.fr.srt Film.mkv     # référence : le sous-titre intégré à la vidéo
 ```
 
-## En bref
+Dans Jellyfin, un [plugin](integrations/jellyfin/README.md) (en anglais) le fait depuis le menu
+d'un film ou d'un épisode, et automatiquement pour les nouveaux sous-titres des bibliothèques
+choisies.
+
+## Là où les autres outils échouent
 
 Un exemple, construit pour ce projet ([`examples/lighthouse`](examples/lighthouse), en
 anglais). Chaque outil reçoit les mêmes fichiers de sous-titres, avec un sous-titre de référence
@@ -25,6 +32,19 @@ calé sur la vidéo.
 Cela ne décrit que ces fichiers, pas toutes les vidéos. Les chiffres, les détails et les scripts
 pour le rejouer sont dans le dossier de l'exemple.
 
+Deux échecs reviennent dans cet exemple et dans le [benchmark](#résultats) :
+
+- **Coupes et scènes ajoutées.** Se caler sur l'audio ou sur le rythme d'un autre sous-titre
+  règle un décalage ou un changement de cadence ; après une scène absente ou ajoutée, une partie
+  du fichier reste souvent décalée. SemanticSubSync sait quelle réplique correspond à laquelle :
+  il trouve où est la coupe et déplace chaque partie de son propre décalage.
+- **Échecs annoncés comme réussis.** Un fichier resté décalé d'une minute, ou recalé sur une
+  piste commentaire, ressort comme une réussite. SemanticSubSync compte les répliques qu'il a pu
+  apparier : sous 25 %, il s'arrête (**pas sûr**) et n'écrit rien.
+
+Sur le benchmark (105 pistes intégrées déformées), SemanticSubSync a réussi 104 cas ; alass en a
+réussi 84, avec 10 échecs graves dont aucun signalé.
+
 ## Pourquoi ce projet existe
 
 Les sous-titres téléchargés pour un film ou un épisode sont souvent faits pour une autre version
@@ -37,14 +57,6 @@ de la même vidéo :
 Résultat : un sous-titre qui dérive, ou qui est juste pendant 20 minutes puis décalé de
 4 secondes.
 
-Les outils habituels se calent sur l'**audio** (ffsubsync, alass en mode audio) ou sur le
-**rythme** d'un autre sous-titre (alass, ffsubsync avec un sous-titre de référence). Sur le
-benchmark ci-dessous :
-
-- ils ont souvent échoué sur les coupes et les scènes ajoutées ;
-- ils **signalaient rarement leurs échecs** : un sous-titre décalé d'une minute ou plus
-  pouvait être annoncé comme réussi.
-
 Or la plupart des vidéos contiennent déjà un sous-titre parfaitement calé : la piste intégrée,
 souvent en version originale.
 
@@ -53,8 +65,7 @@ un petit modèle de phrases multilingue : « Where did you put the keys? » et �
 clés ? » sont reconnues comme la même réplique.
 
 Quand trop peu de répliques correspondent (mauvaise référence, piste commentaire, montage
-différent), il **ignore le fichier (pas sûr)** et n'y
-touche pas.
+différent), il **ignore le fichier (pas sûr)** et n'y touche pas.
 
 ## Exemple
 

@@ -2,14 +2,20 @@
 
 # SemanticSubSync
 
-Fix the timing of a subtitle by comparing **what is said**, line by line, with a subtitle that
-is already in sync, even when the two are in different languages.
+Re-times a downloaded subtitle in the cases where the usual sync tools fail: a scene added or
+cut, a different frame rate, or both. It compares **what is said**, line by line, with a
+subtitle already in sync (usually the one embedded in the video), even in another language. When
+that reference does not match, it says so and leaves the file alone instead of reporting a
+success.
 
 ```bash
 semantic-subsync Movie.fr.srt Movie.mkv     # reference: the subtitle embedded in the video
 ```
 
-## At a glance
+In Jellyfin, a [plugin](integrations/jellyfin/README.md) does it from the menu of a movie or an
+episode, and automatically for new subtitles in the libraries you choose.
+
+## Where other tools fail
 
 One example, built for this project ([`examples/lighthouse`](examples/lighthouse)). Each tool
 gets the same subtitle files, with a reference subtitle that is in sync with the video.
@@ -24,6 +30,19 @@ gets the same subtitle files, with a reference subtitle that is in sync with the
 This describes these files only, not every video. The figures, the details and the scripts to
 rerun it are in the example folder.
 
+Two failures come back in this example and in the [benchmark](#results):
+
+- **Cuts and inserted scenes.** Aligning on the audio or on the timing pattern of another
+  subtitle handles an offset or a frame-rate change; after a scene missing or added, part of the
+  file often stays off. SemanticSubSync knows which line is which, so it finds where the cut is
+  and moves each part by its own offset.
+- **Failures reported as success.** A file left off by a minute, or re-timed on a commentary
+  track, comes out as a success. SemanticSubSync counts the lines it could match: below 25 %, it
+  is **unsure** and writes nothing.
+
+On the benchmark (105 distorted embedded tracks), SemanticSubSync passed 104 cases; alass passed
+84 and had 10 gross failures, none of them reported.
+
 ## Why this project exists
 
 Subtitles downloaded for a movie or an episode are often made for another release of the same
@@ -34,13 +53,6 @@ video:
 - a different intro.
 
 The result is a subtitle that drifts, or that is fine for 20 minutes and then off by 4 seconds.
-
-The usual tools align on the **audio** (ffsubsync, alass in audio mode) or on the **timing
-pattern** of another subtitle (alass, ffsubsync with a subtitle reference). On the benchmark below:
-
-- they often failed on cuts and inserted scenes;
-- they **rarely said when they failed**: a subtitle moved by a minute or more could still be
-  reported as a success.
 
 Yet most videos already carry a perfectly timed subtitle: the embedded track, often in the
 original language.
