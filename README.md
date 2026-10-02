@@ -258,7 +258,7 @@ dialogue (see [Development](#development)).
 pip install "semantic-subsync[model] @ git+https://github.com/ludosch/SemanticSubSync"
 ```
 
-The model (about 240 MB) is downloaded from Hugging Face on first use.
+The default model (about 220 MB) is downloaded from Hugging Face on first use.
 
 Each [release](https://github.com/ludosch/SemanticSubSync/releases) also carries the Python
 package and a Docker image for amd64 and arm64, to load with `docker load`:
@@ -329,7 +329,7 @@ Two multilingual sentence models, both published by
 
 | Name | Model | |
 |---|---|---|
-| `static` (default) | [static-similarity-mrl-multilingual-v1](https://huggingface.co/sentence-transformers/static-similarity-mrl-multilingual-v1), first 512 dimensions | Averaged word vectors, no neural network to run: on the benchmark, its vectors took about 1 % of minilm's time (see [Speed](#benchmark-on-embedded-tracks) for whole files) |
+| `static` (default) | [static-similarity-mrl-multilingual-v1](https://huggingface.co/sentence-transformers/static-similarity-mrl-multilingual-v1), its official float16 export, first 512 dimensions | Averaged word vectors, no neural network to run: on the benchmark, its vectors took about 1 % of minilm's time (see [Speed](#benchmark-on-embedded-tracks) for whole files) |
 | `minilm` | [paraphrase-multilingual-MiniLM-L12-v2](https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2), through [fastembed](https://github.com/qdrant/fastembed) | A small transformer: slower, a little better on some hard cases |
 
 On the benchmark and the real-world datasets the two made the same decisions; minilm corrected
@@ -338,10 +338,14 @@ a few hard files better (a frame-rate change on a different cut, for instance). 
 [Bazarr guide](integrations/bazarr/README.md#test-one-pair-by-hand)). Each model has its own
 similarity threshold, set in the code.
 
+**static in float16.** The model is read from the official float16 export, half the download of
+the float32 file. On the benchmark and the real-world datasets it made the same decisions as the
+float32 file; the similarities differed by 0.0001 at most.
+
 | Variable | Meaning |
 |---|---|
 | `SEMSYNC_MODEL` | `static` (default) or `minilm` |
-| `SEMSYNC_MODEL_DIR` | Folder holding local copies, one sub-folder per model: `static/` (`tokenizer.json`, `model.safetensors`), `minilm/` (e.g. the int8 one, see below). A model without its sub-folder is downloaded from Hugging Face on first use |
+| `SEMSYNC_MODEL_DIR` | Folder holding local copies, one sub-folder per model: `static/` (`tokenizer.json`, and `model_fp16.onnx` or `model.safetensors`), `minilm/` (e.g. the int8 one, see below). A model without its sub-folder is downloaded from Hugging Face on first use |
 | `SEMSYNC_CACHE` | Optional folder where embeddings are cached on disk |
 
 **int8 minilm.** [`tools/quantize_model.py`](tools/quantize_model.py) builds a 112 MB int8 copy.

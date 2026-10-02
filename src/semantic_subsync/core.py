@@ -18,8 +18,10 @@ import numpy as np
 # (min_sim) belongs to the model and is never chosen on its own.
 MODELS = {
     # averaged static token vectors (no transformer): its vectors take ~1 % of minilm's time, same
-    # decisions on the benches; only the first `dims` dimensions are used (Matryoshka training)
-    "static": dict(repo="sentence-transformers/static-similarity-mrl-multilingual-v1", min_sim=0.32, dims=512),
+    # decisions on the benches; only the first `dims` dimensions are used (Matryoshka training).
+    # The official float16 export: half the download of the float32 file, same decisions on the benches
+    "static": dict(repo="sentence-transformers/static-similarity-mrl-multilingual-v1", min_sim=0.32, dims=512,
+                   revision="b68f4122911bcffcd6e1f695f2d99cd6788972d8", table="onnx/model_fp16.onnx"),
     # a small multilingual transformer: much slower, a little better on some hard cases
     "minilm": dict(repo="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2", min_sim=0.55),
 }
@@ -67,7 +69,7 @@ def embed(texts, model=None):
     import hashlib
     model = check_model(model or DEFAULT_MODEL)
     d = model_dir(model)
-    key = hashlib.md5((model + (d or "") + "\x00" + "\x00".join(texts)).encode()).hexdigest()
+    key = hashlib.md5((model + MODELS[model].get("table", "") + (d or "") + "\x00" + "\x00".join(texts)).encode()).hexdigest()
     if key in _cache: return _cache[key]
     disk = os.environ.get("SEMSYNC_CACHE")
     if disk and os.path.exists(f"{disk}/{key}.npy"):
@@ -91,27 +93,82 @@ def _load_minilm(m, d):
         return v
     return emb
 
-def _load_static(m, d):
-    """A cue's vector is the mean of its token vectors. The table is read from the safetensors
-    file directly (memory-mapped, a single float32 tensor): no deep-learning library needed."""
+def _safetensors_table(path):
+    """The float32 table of a safetensors file (a local copy of the full-precision model)."""
     import json
-    from tokenizers import Tokenizer
-    if d:
-        tok_file, table_file = os.path.join(d, "tokenizer.json"), os.path.join(d, "model.safetensors")
-    else:
-        from huggingface_hub import hf_hub_download
-        tok_file, table_file = (hf_hub_download(m["repo"], f"0_StaticEmbedding/{f}")
-                                for f in ("tokenizer.json", "model.safetensors"))
-    tok = Tokenizer.from_file(tok_file)
-    raw = np.memmap(table_file, np.uint8, "r"); n = int.from_bytes(bytes(raw[:8]), "little")
+    raw = np.memmap(path, np.uint8, "r"); n = int.from_bytes(bytes(raw[:8]), "little")
     t = json.loads(bytes(raw[8:8 + n]))["embedding.weight"]; a, b = t["data_offsets"]
     assert t["dtype"] == "F32", t["dtype"]
-    table = np.ascontiguousarray(raw[8 + n + a: 8 + n + b].view(np.float32).reshape(t["shape"])[:, :m["dims"]])
-    del raw
+    return raw[8 + n + a: 8 + n + b].view(np.float32).reshape(t["shape"])
+
+def _onnx_table(path, name="embedding.weight"):
+    """The tensor `name` of an ONNX file, found by walking its protobuf: the graph's initializers
+    and the sub-graphs held by node attributes (the official fp16 export keeps the table in a Loop
+    body). Memory-mapped; no onnx library needed."""
+    raw = np.memmap(path, np.uint8, "r"); buf = memoryview(raw)
+    def varint(i):
+        x = s = 0
+        while True:
+            b = buf[i]; i += 1; x |= (b & 0x7F) << s; s += 7
+            if b < 0x80: return x, i
+    def fields(i, end):   # (field number, value) for varints, (field number, start, end) for bytes
+        while i < end:
+            key, i = varint(i); f, w = key >> 3, key & 7
+            if w == 0: v, i = varint(i); yield f, v, None
+            elif w == 2: n, i = varint(i); yield f, i, i + n; i += n
+            elif w == 1: i += 8
+            elif w == 5: i += 4
+            else: raise ValueError(f"{path}: unexpected protobuf wire type {w}")
+    def tensors(i, end):  # GraphProto: initializer = 5, node = 1 -> attribute = 5 -> g = 6, graphs = 11
+        for f, a, b in fields(i, end):
+            if b is None: continue
+            if f == 5: yield a, b
+            elif f == 1:
+                for f2, a2, b2 in fields(a, b):
+                    if f2 == 5 and b2 is not None:
+                        for f3, a3, b3 in fields(a2, b2):
+                            if f3 in (6, 11) and b3 is not None: yield from tensors(a3, b3)
+    for f, a, b in fields(0, len(buf)):
+        if f != 7 or b is None: continue   # ModelProto.graph
+        for ta, tb in tensors(a, b):        # TensorProto: dims = 1, data_type = 2, name = 8, raw_data = 9
+            dims, dtype, tname, data = [], None, None, None
+            for f2, x, y in fields(ta, tb):
+                if f2 == 1:
+                    if y is None: dims.append(x)
+                    else:
+                        j = x
+                        while j < y: v, j = varint(j); dims.append(v)
+                elif f2 == 2: dtype = x
+                elif f2 == 8: tname = bytes(buf[x:y]).decode()
+                elif f2 == 9: data = (x, y)
+            if tname == name:
+                types = {1: np.float32, 10: np.float16}
+                if dtype not in types or data is None:
+                    raise ValueError(f"{path}: {name} has data type {dtype} or no raw data")
+                return raw[data[0]:data[1]].view(types[dtype]).reshape(dims)
+    raise ValueError(f"{path}: no tensor {name}")
+
+def _load_static(m, d):
+    """A cue's vector is the mean of its token vectors. The table is the official float16 export
+    (onnx/model_fp16.onnx at a fixed revision), or a local copy (model_fp16.onnx, or the
+    full-precision model.safetensors). Only the first `dims` columns are kept in memory; a
+    looked-up row is turned into float32 before the mean."""
+    from tokenizers import Tokenizer
+    if d:
+        tok_file = os.path.join(d, "tokenizer.json")
+        table_file = next((p for p in (os.path.join(d, f) for f in ("model_fp16.onnx", "model.safetensors"))
+                           if os.path.exists(p)), os.path.join(d, "model_fp16.onnx"))
+    else:
+        from huggingface_hub import hf_hub_download
+        tok_file = hf_hub_download(m["repo"], "0_StaticEmbedding/tokenizer.json", revision=m["revision"])
+        table_file = hf_hub_download(m["repo"], m["table"], revision=m["revision"])
+    tok = Tokenizer.from_file(tok_file)
+    full = _safetensors_table(table_file) if table_file.endswith(".safetensors") else _onnx_table(table_file)
+    table = np.ascontiguousarray(full[:, :m["dims"]]); del full
     def emb(texts):
         v = np.zeros((len(texts), table.shape[1]), np.float32)
         for i, e in enumerate(tok.encode_batch(texts, add_special_tokens=False)):
-            if e.ids: v[i] = table[e.ids].mean(0)
+            if e.ids: v[i] = table[e.ids].astype(np.float32).mean(0)
         return v
     return emb
 

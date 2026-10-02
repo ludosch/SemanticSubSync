@@ -102,9 +102,9 @@ services:
     restart: unless-stopped
 ```
 
-The default model (`static`) is downloaded on first use (434 MB). To run offline, put its
-`tokenizer.json` and `model.safetensors` (from the `0_StaticEmbedding` folder of the model) in
-`./models/static`. If you also want `minilm` on a small CPU, make its int8 copy once with
+The default model (`static`) is downloaded on first use (about 220 MB). To run offline, put its
+`0_StaticEmbedding/tokenizer.json` and `onnx/model_fp16.onnx` (or the larger
+`0_StaticEmbedding/model.safetensors`) in `./models/static`. If you also want `minilm` on a small CPU, make its int8 copy once with
 [`tools/quantize_model.py`](../../tools/quantize_model.py) into `./models/minilm`.
 
 | Variable | Default | |

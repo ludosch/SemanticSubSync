@@ -17,6 +17,13 @@ All notable changes to this project are documented here. The format follows
 - Optional dependency set `static` (`pip install "semantic-subsync[static]"`): only what the
   default `static` model needs, without the `minilm` runtime.
 
+### Changed
+- The `static` model is downloaded as its official float16 export (`onnx/model_fp16.onnx`, at a
+  fixed revision of the model repository): about 220 MB instead of 434 MB, and half the memory for
+  its table. Same decisions as the float32 file on the benchmark and the real-world datasets. A
+  local copy (`SEMSYNC_MODEL_DIR/static`) can hold `model_fp16.onnx` or, as before,
+  `model.safetensors`.
+
 ### Fixed
 - Worker: runs where `os.nice` does not exist (Windows) instead of failing at start.
 
