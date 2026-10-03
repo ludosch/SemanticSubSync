@@ -103,6 +103,17 @@ class State:
                         list(row.values()))
         self.db.commit()
 
+    def update(self, sub, /, **fields):
+        """Change some columns of a recorded subtitle (e.g. `replaced_path` after a rename), leaving
+        its decision, run count and date as they are. Returns whether the row exists."""
+        refused = set(fields) - (set(FIELDS) - {"sub", "pending", "runs"})
+        if refused or not fields:
+            raise ValueError(f"cannot update {', '.join(sorted(refused)) or 'nothing'}")
+        cur = self.db.execute(f"UPDATE subtitles SET {', '.join(f'{k} = ?' for k in fields)} WHERE sub = ?",
+                              [*fields.values(), sub])
+        self.db.commit()
+        return cur.rowcount > 0
+
     def all(self):
         return [dict(r) for r in self.db.execute("SELECT * FROM subtitles ORDER BY processed_at DESC")]
 

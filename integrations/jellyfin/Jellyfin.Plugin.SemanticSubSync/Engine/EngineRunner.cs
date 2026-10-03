@@ -57,6 +57,7 @@ public sealed class EngineRunner
         psi.ArgumentList.Add(subtitle);
         SetEnvironment(psi);
         psi.Environment["SEMSYNC_OUTPUT"] = Plugin.Instance!.Configuration.Output;
+        psi.Environment["SEMSYNC_KEEP_DOWNLOAD"] = Plugin.Instance.Configuration.KeepDownload;
         // the engine calls ffmpeg/ffprobe: use the ones Jellyfin ships with
         var ffmpegDir = Path.GetDirectoryName(_mediaEncoder.EncoderPath);
         if (!string.IsNullOrEmpty(ffmpegDir))
@@ -107,6 +108,7 @@ public sealed class EngineRunner
             }
 
             string status;
+            bool renamed;
             try
             {
                 using var doc = JsonDocument.Parse(line);
@@ -114,6 +116,8 @@ public sealed class EngineRunner
                 status = root.ValueKind == JsonValueKind.Object && root.TryGetProperty("status", out var s) && s.ValueKind == JsonValueKind.String
                     ? s.GetString()!
                     : "?";
+                // an unchanged subtitle whose kept download was renamed (new name, other setting)
+                renamed = root.ValueKind == JsonValueKind.Object && root.TryGetProperty("renamed", out _);
                 if (status == "unchanged" && root.TryGetProperty("last", out var last) && last.ValueKind == JsonValueKind.String)
                 {
                     status += ":" + last.GetString();   // e.g. "unchanged:corrected", the decision it keeps
@@ -126,7 +130,7 @@ public sealed class EngineRunner
                 return EngineResult.Failed("error");
             }
 
-            var changed = !status.StartsWith("unchanged", StringComparison.Ordinal) && !Untouched.Contains(status);
+            var changed = renamed || (!status.StartsWith("unchanged", StringComparison.Ordinal) && !Untouched.Contains(status));
             return new EngineResult(status, changed, line);
         }
     }

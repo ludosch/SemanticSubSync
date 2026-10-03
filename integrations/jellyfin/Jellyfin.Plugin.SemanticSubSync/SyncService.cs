@@ -39,7 +39,9 @@ public sealed class SyncService : IDisposable
 {
     private const int MaxAttempts = 3;   // an engine failure on an unchanged file is not retried beyond this
 
-    private static readonly string[] OwnTags = ["replaced", "resync"];   // files the engine writes
+    // files the engine writes: "untouched" (the kept download), "resync" (side mode), "replaced" (the
+    // kept download up to 0.12); a hidden kept download ends with ".orig", not a subtitle extension
+    private static readonly string[] OwnTags = ["untouched", "replaced", "resync"];
 
     // decisions that settle a subtitle until it changes; "changed_during_run" is retried, the rest are failures
     private static readonly string[] Final = ["corrected", "in_sync", "unsure", "no_reference", "redundant", "skipped"];
@@ -120,6 +122,11 @@ public sealed class SyncService : IDisposable
 
     public static bool IsOwn(string path)
     {
+        if (path.EndsWith(".orig", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
         var toks = Path.GetFileName(path).ToLowerInvariant().Split('.');
         return toks.Skip(1).Take(toks.Length - 2).Any(t => OwnTags.Contains(t));
     }
@@ -338,8 +345,10 @@ public sealed class SyncService : IDisposable
         }
     }
 
-    // ---- seen: (size, mtime, output mode) of each subtitle after its last run, so unchanged files cost
-    // nothing. The engine's own state.db is the reference; this only avoids starting a process per file.
+    // ---- seen: (size, mtime, output mode, kept download visible or hidden) of each subtitle after its
+    // last run, so unchanged files cost nothing. The engine's own state.db is the reference; this only
+    // avoids starting a process per file. A changed setting makes every subtitle checked again: the
+    // engine then moves the files (cheap, no new sync).
 
     // A subtitle recorded when its library was first seen, never processed: "existing:<size>:<date>".
     private const string Existing = "existing:";
@@ -353,7 +362,11 @@ public sealed class SyncService : IDisposable
         return string.Create(CultureInfo.InvariantCulture, $"{fi.Length}:{fi.LastWriteTimeUtc.Ticks}");
     }
 
-    private static string Fingerprint(string path) => SizeAndDate(path) + ":" + (Plugin.Instance?.Configuration.Output ?? "replace");
+    private static string Fingerprint(string path)
+    {
+        var config = Plugin.Instance?.Configuration;
+        return SizeAndDate(path) + ":" + (config?.Output ?? "replace") + ":" + (config?.KeepDownload ?? "visible");
+    }
 
     private static (int Attempts, string Fingerprint) ParseFailed(string fp)
     {

@@ -7,8 +7,8 @@ match the embedded subtitle, the file is left alone.
 ```
 new video, or new / changed .srt ──> plugin ──> semantic-subsync-worker one VIDEO SUB
                                                         │
-                       Movie.fr.srt           corrected (keeps its name)
-                       Movie.replaced.fr.srt  the download, kept only when a correction was made
+                       Movie.fr.srt            corrected (keeps its name)
+                       Movie.fr.untouched.srt  the download, kept only when a correction was made
                                                         │
                                    item refreshed: Jellyfin shows the tracks at once
 ```
@@ -76,10 +76,15 @@ Dashboard > Plugins > SemanticSubSync:
 - **New subtitles, automatically, in these libraries**: all of them by default, including
   libraries created later.
 - **Also process the subtitles that were already there (catch-up)**: off by default.
-- **Correction**: replace the subtitle and keep the download as `replaced` (default; Jellyfin then
-  makes the same choice as for the download, and a newer download from Bazarr takes the name
-  back), or add the correction next to the download as `resync`, flagged so that Jellyfin plays it
-  by default.
+- **Correction**: replace the subtitle and keep the download as an extra track titled
+  `untouched` (default; Jellyfin plays the correction, as it would have played the download, and
+  a newer download from Bazarr takes the name back), or add the correction next to the download as
+  `resync`, flagged so that Jellyfin plays it by default.
+- **Hide the original download (only the correction is shown)**: off by default. On, the download
+  is kept in the same folder as `Movie.fr.srt.orig`, a name Jellyfin and Bazarr do not read, so
+  the player lists the correction only; it is still used if the subtitle is checked again, and
+  put back if no correction is needed any more. Changing this setting renames the kept files the
+  next time the subtitles are checked (the scheduled task does it, without syncing them again).
 - **Engine source** (advanced): a wheel path or URL to install instead of the release the plugin
   was built for, e.g. `file:///config/semantic_subsync-0.12.0-py3-none-any.whl`. A
   `semantic-subsync-0.12.0-constraints.txt` next to it pins the dependency versions; without

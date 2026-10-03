@@ -11,8 +11,13 @@ $SEMSYNC_DIR/queue (see integrations/bazarr/enqueue.py for Bazarr). For each job
   4. aligns the subtitle on that reference by meaning (core.resync);
   5. when a correction is needed, writes it according to SEMSYNC_OUTPUT:
      replace (default)  the correction takes the subtitle's name and the downloaded subtitle is
-                        kept as '<video>.replaced.<lang...>.srt': Jellyfin shows it as an extra
-                        track titled "Replaced", to switch back to if the correction is wrong;
+                        kept as '<subtitle>.untouched.srt' ('Movie.fr.hi.untouched.srt'): Jellyfin
+                        shows it as an extra track titled "untouched", to switch back to if the
+                        correction is wrong, listed after the correction (Jellyfin plays the first
+                        of a language, in file name order); with SEMSYNC_KEEP_DOWNLOAD=hidden it is
+                        kept as '<subtitle>.orig' instead, a name no player reads. A download kept
+                        by an earlier version ('<video>.replaced.<lang...>.srt') or under the other
+                        SEMSYNC_KEEP_DOWNLOAD value is renamed the next time its subtitle is seen;
      side               the subtitle is left as is, the correction is '<video>.resync.<lang...>.default.srt':
                         Jellyfin shows it as a track titled "Resync" and picks it by default (a forced
                         subtitle's correction gets no "default" flag).
@@ -60,13 +65,17 @@ LOG_MAX_BYTES = _megabytes(os.environ.get("SEMSYNC_LOG_MAX_MB", "10"))
 DB = f"{BASE}/state.db"
 POLL = 30
 OUTPUT = os.environ.get("SEMSYNC_OUTPUT", "replace")        # "replace" or "side"
+# replace mode: the download kept beside the correction is "visible" (an extra track) or "hidden"
+KEEP_DOWNLOAD = os.environ.get("SEMSYNC_KEEP_DOWNLOAD", "visible")
 # lines the video has no room for (a credit, a recap or a scene it lacks): "drop" or "keep"
 EXTRA_LINES = os.environ.get("SEMSYNC_EXTRA_LINES", core.P["extra_lines"])
 # queued jobs whose video or subtitle lies outside these folders (os.pathsep-separated) are
 # skipped; empty: no restriction
 MEDIA_ROOT = os.environ.get("SEMSYNC_MEDIA_ROOT", "")
-REPLACED, RESYNC = "replaced", "resync"
-OWN_TAGS = (REPLACED, RESYNC)
+UNTOUCHED, RESYNC = "untouched", "resync"
+REPLACED = "replaced"               # the kept download's tag up to 0.12: '<video>.replaced.<lang...>.srt'
+OWN_TAGS = (UNTOUCHED, REPLACED, RESYNC)
+HIDDEN = ".orig"                    # SEMSYNC_KEEP_DOWNLOAD=hidden: '<subtitle>.orig', not a subtitle extension
 # what follows a subtitle's title in its name: language codes and Jellyfin's flags
 FLAG_TAGS = {"forced", "foreign", "default"} | media.HI_TAGS
 CHANGED = "changed_during_run"      # the subtitle was replaced while it was being processed
@@ -78,6 +87,8 @@ def check_settings():
     errors = []
     if OUTPUT not in ("replace", "side"):
         errors.append(f"SEMSYNC_OUTPUT={OUTPUT!r}: choose replace or side")
+    if KEEP_DOWNLOAD not in ("visible", "hidden"):
+        errors.append(f"SEMSYNC_KEEP_DOWNLOAD={KEEP_DOWNLOAD!r}: choose visible or hidden")
     if EXTRA_LINES not in ("drop", "keep"):
         errors.append(f"SEMSYNC_EXTRA_LINES={EXTRA_LINES!r}: choose drop or keep")
     if core.DEFAULT_MODEL not in core.MODELS:
@@ -172,6 +183,25 @@ def tagged_path(video, sub, tag):
     return sub[:len(sub) - len(name)] + ".".join(words[:i] + [tag] + words[i:]) + ".srt"
 
 
+def kept_path(sub, keep=None):
+    """Where replace mode keeps the download. Visible: 'Show.fr.hi.srt' -> 'Show.fr.hi.untouched.srt',
+    the same language and flags for Jellyfin, "untouched" as the track's title. Jellyfin lists the
+    external subtitles in file name order (culture-aware: '~' and '-' sort before letters) and, for
+    a language, plays the first one: the tag goes last, after every word of the subtitle's name,
+    and starts with a letter after the 's' of 'srt', so the correction comes first whatever the
+    language. Hidden: 'Show.fr.hi.srt.orig', which neither Jellyfin nor Bazarr reads."""
+    if (keep or KEEP_DOWNLOAD) == "hidden":
+        return sub + HIDDEN
+    root, ext = os.path.splitext(sub)
+    return f"{root}.{UNTOUCHED}{ext}"
+
+
+def former_kept_paths(video, sub):
+    """Where an earlier version, or the other SEMSYNC_KEEP_DOWNLOAD value, kept the download."""
+    other = "visible" if KEEP_DOWNLOAD == "hidden" else "hidden"
+    return [kept_path(sub, other), tagged_path(video, sub, REPLACED)]
+
+
 def side_path(video, sub):
     """'Show - S01E01.fr.srt' -> 'Show - S01E01.resync.fr.default.srt': the "default" flag makes Jellyfin
     pick the correction over the download, which keeps its name. A forced subtitle gets no flag: it
@@ -185,16 +215,18 @@ def side_path(video, sub):
 
 def is_own(path, video=None):
     """A file this worker wrote (or kept aside): never a job of its own. Only the words after the
-    video's name count ('The.Replaced.2024.fr.srt' is a download); without the video, the word
-    before the language and flags, or the last word (names written by earlier versions)."""
+    video's name count ('The.Replaced.2024.fr.srt' is a download); without the video, the last
+    word, or the word before the language and flags (names written by earlier versions)."""
     name = os.path.basename(path).lower()
+    if name.endswith(HIDDEN):
+        return True
     if video:
         stem = os.path.basename(os.path.splitext(video)[0]).lower()
         if name.startswith(stem + "."):
             return any(t in OWN_TAGS for t in name[len(stem):].split(".")[1:-1])
     words = name.split(".")[:-1]
     i = _title_end(words)
-    return len(words) > 1 and (words[i - 1] in OWN_TAGS or words[-1] in OWN_TAGS)
+    return len(words) > 1 and (words[-1] in OWN_TAGS or words[i - 1] in (REPLACED, RESYNC))
 
 
 def settings(model):
@@ -299,39 +331,58 @@ def _records(row):
     return [r for r in (row, (row or {}).get("pending")) if r]
 
 
-def locate(sub, replaced, row, cur):
+def locate(sub, kept, row, cur):
     """The file that holds the downloaded subtitle. In replace mode `sub` may hold the worker's own
-    correction (a hash recorded for it), the download being kept in the .replaced file; a new
-    download overwrites `sub` (another hash). With no record at all (state.db lost or reset), an
-    existing .replaced file can only be a download kept by an earlier run."""
-    if not os.path.isfile(replaced):
+    correction (a hash recorded for it), the download being kept aside (`kept`); a new download
+    overwrites `sub` (another hash). With no record at all (state.db lost or reset), an existing
+    kept file can only be a download kept by an earlier run."""
+    if not os.path.isfile(kept):
         return sub
     if row is None:
-        return replaced
+        return kept
     ours = {r.get("output_sha256") for r in _records(row) if r.get("output_path") == sub}
-    return replaced if cur in ours else sub
+    return kept if cur in ours else sub
+
+
+def move_kept(kept, former):
+    """A download kept under a former name (by an earlier version, or under the other
+    SEMSYNC_KEEP_DOWNLOAD value) takes the current name: a rename, nothing is overwritten. It is
+    then treated as any file under the current name: the download, or a leftover that the run
+    removes (known content) or sets aside. Returns [old, new], or None."""
+    for old in former:
+        if os.path.isfile(old) and not os.path.exists(kept):
+            os.replace(old, kept)
+            return [old, kept]
+    return None
 
 
 def _process(video, sub, rec, t0, force, score, state, model):
-    replaced, side = tagged_path(video, sub, REPLACED), side_path(video, sub)
+    kept, side, former = kept_path(sub), side_path(video, sub), former_kept_paths(video, sub)
     row = state.get(sub)
     choice = (row or {}).get("model_choice") if model is None else (None if model == "default" else model)
     use = choice or core.DEFAULT_MODEL
     cur = sha256(sub)
-    source = locate(sub, replaced, row, cur)
+    renamed = move_kept(kept, former)
+    if renamed:
+        rec = {**rec, "renamed": renamed}
+    source = locate(sub, kept, row, cur)
     src_sha = cur if source == sub else sha256(source)
     vsize, vmtime = video_stamp(video)
-    # files left by an interrupted run, or by another output mode
+    # files left by an interrupted run, by another output mode, or under a former name beside the current one
     leftover = [p for p, wanted in ((side, row and row["output_path"] == side),
-                                    (replaced, row and row["output_path"] == sub)) if not wanted and os.path.exists(p)]
+                                    (kept, row and row["output_path"] == sub)) if not wanted and os.path.exists(p)]
+    leftover += [p for p in former if os.path.isfile(p)]
     if (not force and row and row["pending"] is None and row["input_sha256"] == src_sha
             and (row["video_size"], row["video_mtime"]) == (vsize, vmtime) and row["output_mode"] == OUTPUT
             and (model is None or (row["model"], row["model_choice"]) == (use, choice))
             and cur in (row["input_sha256"], row["output_sha256"])
             and kept_output(row, sub, side) and not leftover):
-        # not kept in the log file: re-runs and backfills would fill it and push real history out
+        if row["output_path"] == sub and row["replaced_path"] != kept:
+            state.update(sub, replaced_path=kept)          # the download is now kept under this name
+        # not kept in the log file unless a file was renamed: re-runs and backfills would fill it
+        # and push real history out
         return log({**rec, "status": "unchanged", "last": row["status"], "processed_at": row["processed_at"]},
-                   keep=False)
+                   keep=bool(renamed))
 
     lang, kind = media.language_key(media.language_of(sub)), media.kind_of(sub)
     entry = {**rec, "lang": lang, "kind": kind, "input_sha256": src_sha, "input_size": os.path.getsize(source),
@@ -366,25 +417,27 @@ def _process(video, sub, rec, t0, force, score, state, model):
                     cleaned.append(_remove(path))
 
             state.begin(sub, {"input_sha256": src_sha, "output_sha256": out_sha, "output_path": outp})
+            for old in former:
+                make_way(old, remove=True)         # a second copy under a former name
             if out is None or OUTPUT == "side":
-                if source == replaced:
+                if source == kept:
                     make_way(sub)
-                    os.replace(replaced, sub)      # the download gets its name back
+                    os.replace(kept, sub)          # the download gets its name back
                 else:
-                    make_way(replaced, remove=True)
+                    make_way(kept, remove=True)
             if out is None:
                 cleaned.append(_remove(side))
             elif OUTPUT == "replace":
                 if source == sub:
-                    make_way(replaced)
-                    _write_atomic(replaced, copy_of=sub, like=sub)   # the download stays visible as "Replaced"
+                    make_way(kept)
+                    _write_atomic(kept, copy_of=sub, like=sub)   # the download stays, "untouched" or hidden
                 make_way(sub)
                 os.replace(tmp, sub)
                 cleaned.append(_remove(side))
             else:
                 os.replace(tmp, side)
             full = {**entry, "status": status, "secs": round(time.time() - t0, 1), **info,
-                    "output_path": outp, "output_sha256": out_sha, "replaced_path": replaced if outp == sub else None}
+                    "output_path": outp, "output_sha256": out_sha, "replaced_path": kept if outp == sub else None}
             state.put(full)
         finally:
             _remove(tmp)
@@ -502,7 +555,8 @@ def drain(state, stuck=None):
 
 def run():
     os.makedirs(QUEUE, exist_ok=True); os.makedirs(FAILED, exist_ok=True)
-    log({"status": "worker_started", "version": __version__, "output": OUTPUT, "extra_lines": EXTRA_LINES,
+    log({"status": "worker_started", "version": __version__, "output": OUTPUT, "keep_download": KEEP_DOWNLOAD,
+         "extra_lines": EXTRA_LINES,
          "model": core.DEFAULT_MODEL, "model_dir": os.environ.get("SEMSYNC_MODEL_DIR"),
          "media_root": MEDIA_ROOT or None})
     state, stuck, done = State(DB), set(), {}

@@ -35,9 +35,20 @@
                     <div class="selectContainer">
                         <label class="selectLabel" for="OutputMode">Correction</label>
                         <select is="emby-select" id="OutputMode" class="emby-select-withcolor emby-select">
-                            <option value="replace">Replace the subtitle, keep the download as "replaced"</option>
+                            <option value="replace">Replace the subtitle, keep the download as "untouched"</option>
                             <option value="side">Add it next to the download, as "resync", played by default</option>
                         </select>
+                    </div>
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label class="emby-checkbox-label">
+                            <input id="HideOriginal" type="checkbox" is="emby-checkbox" />
+                            <span>Hide the original download (only the correction is shown)</span>
+                        </label>
+                        <div class="fieldDescription checkboxFieldDescription">Off: when a subtitle is corrected, the
+                            subtitle as downloaded stays in the player's list as an extra "untouched" track, to switch
+                            to if the correction is wrong. On: it is kept in the same folder under a name the player
+                            ignores (<code>.srt.orig</code>), so only the correction shows. Changing this renames the
+                            kept files the next time the subtitles are checked.</div>
                     </div>
                     <div class="inputContainer">
                         <label class="inputLabel inputLabelUnfocused" for="EngineSource">Engine source (advanced)</label>
@@ -119,6 +130,7 @@
                     });
                     document.querySelector('#ProcessExisting').checked = config.ProcessExisting;
                     document.querySelector('#OutputMode').value = config.OutputMode === 'side' ? 'side' : 'replace';
+                    document.querySelector('#HideOriginal').checked = config.HideOriginal === true;
                     document.querySelector('#EngineSource').value = config.EngineSource || '';
                     sssSave(true);
                 }).catch(function () {
@@ -136,6 +148,7 @@
                         document.querySelectorAll('.sssLib:not(:checked)'), function (i) { return i.getAttribute('data-id'); });
                     config.ProcessExisting = document.querySelector('#ProcessExisting').checked;
                     config.OutputMode = document.querySelector('#OutputMode').value;
+                    config.HideOriginal = document.querySelector('#HideOriginal').checked;
                     config.EngineSource = document.querySelector('#EngineSource').value.trim();
                     return ApiClient.updatePluginConfiguration(SemanticSubSyncConfig.pluginUniqueId, config);
                 }).then(function (result) {

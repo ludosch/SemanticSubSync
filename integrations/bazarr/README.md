@@ -9,8 +9,8 @@ Bazarr ──(custom post-processing)──> enqueue.py ──> /data/.semsync/q
                                                           │
                               semantic-subsync-worker <───┘
                                           │
-                 Movie.fr.srt           corrected (keeps the name Bazarr gave it)
-                 Movie.replaced.fr.srt  the download, kept only when a correction was made
+                 Movie.fr.srt            corrected (keeps the name Bazarr gave it)
+                 Movie.fr.untouched.srt  the download, kept only when a correction was made
 ```
 
 Bazarr has no plugin system for synchronization engines: its built-in sync (ffsubsync) is
@@ -26,17 +26,24 @@ the track. With the default output mode:
 
 | File | Shown in Jellyfin |
 |---|---|
-| `Movie.fr.srt` | French - SUBRIP - External (the correction, listed first) |
-| `Movie.replaced.fr.srt` | replaced - French - SUBRIP - External |
+| `Movie.fr.srt` | French - SUBRIP - External (the correction, played by default) |
+| `Movie.fr.untouched.srt` | untouched - French - SUBRIP - External |
+| `Movie.fr.hi.untouched.srt` | untouched - French - Hearing impaired - SUBRIP - External |
 
-If a correction is wrong, pick the "replaced" track. `SEMSYNC_OUTPUT=side` keeps the download
-under its own name instead and writes the correction as `Movie.resync.fr.default.srt` ("resync -
-French - Default"): the "default" flag makes Jellyfin play the correction first. A media server
-may only see a new file after its next library scan.
+For a language, Jellyfin plays the first external subtitle in file name order: `untouched` comes
+last in the name so that the correction is listed first in every language. If a correction is
+wrong, pick the "untouched" track. With `SEMSYNC_KEEP_DOWNLOAD=hidden` the download is kept as
+`Movie.fr.srt.orig` instead, a name that Jellyfin and Bazarr do not read: only the correction
+shows. `SEMSYNC_OUTPUT=side` keeps the download under its own name instead and writes the
+correction as `Movie.resync.fr.default.srt` ("resync - French - Default"): the "default" flag
+makes Jellyfin play the correction first. A media server may only see a new file after its next
+library scan.
 
 When Bazarr downloads a new subtitle over a corrected one (an upgrade, a manual search), the
-new file is checked again and the old `.replaced` file is replaced or removed. When a subtitle
-needs no correction (any more), it keeps its name and no extra file is left.
+new file is checked again and the old kept download is replaced or removed. When a subtitle
+needs no correction (any more), it keeps its name and no extra file is left. A download kept by
+an earlier version (`Movie.replaced.fr.srt`) or under the other `SEMSYNC_KEEP_DOWNLOAD` value is
+renamed the next time its subtitle is checked (`backfill` checks them all), without a new sync.
 
 A downloaded subtitle is never deleted: a file whose content the worker cannot account for
 (see [State](#state)) is renamed `<name>.<date>.bak` instead of being overwritten or removed.
@@ -117,12 +124,13 @@ The default model (`static`) is downloaded into `/models` on first use (about 22
 | `SEMSYNC_DIR` | `/data/.semsync` | Exchange folder: `queue/`, `failed/`, `state.db`, `semsync.log` |
 | `SEMSYNC_MODEL_DIR` | `/models` | Local model copies (`<folder>/static`, `<folder>/minilm`); a model without one is downloaded into `<folder>/hf` |
 | `SEMSYNC_MODEL` | `static` | Sentence model: `static` or `minilm` (see [Models](../../docs/models.md)) |
-| `SEMSYNC_OUTPUT` | `replace` | `replace`: the correction takes the subtitle's name, the download is kept as `.replaced`. `side`: the download is left as is, the correction is written as `.resync` |
+| `SEMSYNC_OUTPUT` | `replace` | `replace`: the correction takes the subtitle's name, the download is kept beside it (see `SEMSYNC_KEEP_DOWNLOAD`). `side`: the download is left as is, the correction is written as `.resync` |
+| `SEMSYNC_KEEP_DOWNLOAD` | `visible` | Replace mode: `visible` keeps the download as an extra track, `Movie.fr.untouched.srt`. `hidden` keeps it as `Movie.fr.srt.orig`, which players ignore. Changing it renames the kept files at the next check |
 | `SEMSYNC_EXTRA_LINES` | `drop` | Lines the video has no room for (a translator credit, a recap or a scene that your video lacks) are removed. `keep` leaves them where nothing is shown nor said, a block of consecutive lines whole or not at all |
 | `SEMSYNC_LOG_MAX_MB` | `10` | Size limit of the log; its oldest entries are deleted beyond it (see [Logs](#logs)). `0`: no limit |
 | `SEMSYNC_MEDIA_ROOT` | (none) | Queued jobs whose video or subtitle lies outside this folder (several: separated by `:`) are skipped. Empty: no restriction |
 
-A wrong value (an unknown output mode, model or extra-lines setting, a size that is not a
+A wrong value (an unknown output mode, keep mode, model or extra-lines setting, a size that is not a
 number) stops the worker at start with a message saying which variable, instead of acting as
 another value.
 
@@ -166,7 +174,7 @@ Each job line holds:
 | `redundant` | The video embeds a text subtitle of the same language and kind |
 | `unchanged` | Already processed, nothing changed since (container output only) |
 | `changed_during_run` | Bazarr wrote a new subtitle while this one was processed: nothing is written, the new file is checked as its own job |
-| `skipped` | Missing file, not an `.srt`, one of the worker's own files (`.replaced`, `.resync`), or outside `SEMSYNC_MEDIA_ROOT` |
+| `skipped` | Missing file, not an `.srt`, one of the worker's own files (`.untouched`, `.resync`, `.replaced` of earlier versions), or outside `SEMSYNC_MEDIA_ROOT` |
 | `error` | Unexpected failure, with the end of the traceback (log file only); the job is moved to `/data/.semsync/failed` |
 
 Everything logged about one episode or movie, oldest first, in a readable form. A path must
@@ -207,9 +215,9 @@ The worker records what it is about to write before it touches any file, so a co
 stopped in the middle of a job is recognised and completed on the next run.
 
 Without `state.db` (deleted, or a new exchange folder), the worker can no longer tell its own
-corrections from new downloads. It then checks everything again, takes an existing `.replaced`
-file as the download, and keeps anything it cannot account for as a `.bak` file rather than
-deleting it. Keep `state.db` with your backups.
+corrections from new downloads. It then checks everything again, takes an existing kept file
+(`.untouched`, `.orig`, or `.replaced` of earlier versions) as the download, and keeps anything
+it cannot account for as a `.bak` file rather than deleting it. Keep `state.db` with your backups.
 
 ## Test one pair by hand
 

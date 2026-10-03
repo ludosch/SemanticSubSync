@@ -7,6 +7,9 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- Option to hide the original download: with `SEMSYNC_KEEP_DOWNLOAD=hidden` (Jellyfin plugin: "Hide
+  the original download"), a corrected subtitle's download is kept as `Movie.fr.srt.orig`, which
+  players ignore, so only the correction is listed. Off by default.
 - Jellyfin plugin: a logo in the plugin catalog.
 - Each release carries `semantic-subsync-X.Y.Z-constraints.txt`: every dependency of the engine,
   pinned as tested. The Jellyfin plugin installs the engine with it.
@@ -31,6 +34,10 @@ All notable changes to this project are documented here. The format follows
   second click follows the sync already running; syncs stop when Jellyfin stops.
 
 ### Fixed
+- The correction is now the subtitle Jellyfin plays by default in every language. The download kept
+  beside it was listed first for languages sorting after "replaced" (Russian, Swedish, Chinese...)
+  and played instead; it is now named `Movie.ru.untouched.srt` (track "untouched"). Files named by
+  earlier versions are renamed the next time their subtitle is checked, without a new sync.
 - Worker: a downloaded subtitle is never deleted. After `state.db` is lost the `.replaced` file is
   taken as the download, and a file it cannot account for is kept aside as `.bak`.
 - Worker: a job interrupted at any point (container stopped, power cut) is completed by the next

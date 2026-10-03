@@ -22,6 +22,7 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setattr(worker, "FAILED", str(tmp_path / "failed"))
     monkeypatch.setattr(worker, "DB", str(tmp_path / "state.db"))
     monkeypatch.setattr(worker, "OUTPUT", "replace")
+    monkeypatch.setattr(worker, "KEEP_DOWNLOAD", "visible")
     use_fake_model(monkeypatch)
     folder = tmp_path / "Show" / "Season 1"
     folder.mkdir(parents=True)
@@ -48,7 +49,12 @@ def row(sub):
         st.close()
 
 
-def replaced_of(env, sub=None):
+def kept_of(env, sub=None, keep=None):
+    return Path(worker.kept_path(sub or env["sub"], keep))
+
+
+def legacy_of(env, sub=None):
+    """Where versions up to 0.12 kept the download."""
     return Path(worker.tagged_path(env["video"], sub or env["sub"], worker.REPLACED))
 
 
@@ -108,6 +114,7 @@ def test_jellyfin_reads_our_files_as_the_same_language_and_kind(sub, lang, hi, f
     video = "/m/Show - S01E01.mkv"
     orig = jellyfin_parse(video, "/m/" + sub)
     assert orig == {"title": None, "lang": lang, "forced": forced, "hi": hi}
+    assert jellyfin_parse(video, worker.kept_path("/m/" + sub, "visible")) == {**orig, "title": worker.UNTOUCHED}
     for tag in (worker.REPLACED, worker.RESYNC):
         assert jellyfin_parse(video, worker.tagged_path(video, "/m/" + sub, tag)) == {**orig, "title": tag}
 
@@ -119,27 +126,62 @@ def test_our_tags_are_not_jellyfin_flags_nor_languages():
         assert tag not in JELLYFIN_LANGUAGES and media.language_key(tag) not in media.LANGUAGE_KEY.values()
 
 
-@pytest.mark.parametrize("lang", sorted(media.LANGUAGE_KEY))
-@pytest.mark.parametrize("kind", ["", ".hi", ".forced"])
-def test_the_correction_keeps_the_download_name_and_the_kept_download_gets_a_title(lang, kind):
-    """For a language, Jellyfin picks first the external subtitle without a title: the correction
-    keeps the download's exact name (no title added), and the download kept beside it only
-    gains the tag as its title, with the same language and flags. File name order plays no part
-    (it would put 'Show.ru.srt' after 'Show.replaced.ru.srt')."""
-    video, sub = "/m/Show - S01E01.mkv", f"/m/Show - S01E01.{lang}{kind}.srt"
-    kept = worker.tagged_path(video, sub, worker.REPLACED)
-    assert kept == f"/m/Show - S01E01.replaced.{lang}{kind}.srt"
-    orig = jellyfin_parse(video, sub)
-    assert jellyfin_parse(video, kept) == {**orig, "title": ".".join(filter(None, [worker.REPLACED, orig["title"]]))}
-    if lang in JELLYFIN_LANGUAGES and lang != "hi":                     # "hi": hearing impaired first
-        assert orig["title"] is None and orig["lang"] == lang
-    assert worker.is_own(kept, video) and not worker.is_own(sub, video)
+def jellyfin_sort_key(name):
+    """Jellyfin (12.1) lists the files of a folder with `OrderBy(x => x)` (DirectoryService.
+    GetFilePaths): the server culture's string order, ICU en-US in the official images. Measured
+    on a real server: punctuation and symbols ('.', '-', '~') come before digits, digits before
+    letters, letters alphabetically whatever their case. This keeps that first level."""
+    return [(0, c) if not c.isalnum() else (1, c) if c.isdigit() else (2, c.lower()) for c in name]
+
+
+# every language word a subtitle may carry: the worker's list, ISO 639-2 codes and English names
+ALL_LANGUAGES = sorted(set(media.LANGUAGE_KEY) | JELLYFIN_LANGUAGES)
+
+
+@pytest.mark.parametrize("lang", ALL_LANGUAGES)
+def test_the_correction_is_listed_before_the_kept_download_in_every_language(lang):
+    """For a language, Jellyfin plays the first external subtitle in file name order. The
+    correction keeps the download's exact name and the kept download gains "untouched" last,
+    after the language and flags: the correction always comes first (culture-aware or ordinal order),
+    and the kept download shows as the same language and kind, titled "untouched"."""
+    video = "/m/Show - S01E01.mkv"
+    for kind in ("", ".hi", ".sdh", ".cc", ".forced", ".default", ".hi.forced", ".Netflix", ".hi.WEB-DL"):
+        sub = f"/m/Show - S01E01.{lang}{kind}.srt"
+        kept = worker.kept_path(sub, "visible")
+        assert kept == f"/m/Show - S01E01.{lang}{kind}.untouched.srt"
+        assert jellyfin_sort_key(sub) < jellyfin_sort_key(kept) and sub < kept
+        orig = jellyfin_parse(video, sub)
+        assert jellyfin_parse(video, kept) == {**orig, "title": ".".join(filter(None, [orig["title"], worker.UNTOUCHED]))}
+        assert worker.is_own(kept, video) and worker.is_own(kept) and not worker.is_own(sub, video)
+
+
+def test_the_sort_model_reproduces_the_bug_of_the_old_name():
+    """Measured on Jellyfin 12.1: 'Show.replaced.ru.srt' was played instead of the correction
+    'Show.ru.srt' ("replaced" < "ru"), while French was fine ("fr" < "replaced")."""
+    for lang, before in (("ru", True), ("zh", True), ("sv", True), ("fr", False), ("en", False)):
+        sub = f"/m/Show.{lang}.srt"
+        legacy = worker.tagged_path("/m/Show.mkv", sub, worker.REPLACED)
+        assert (jellyfin_sort_key(legacy) < jellyfin_sort_key(sub)) is before
+        # and a symbol in front of the tag would not help: '~' sorts before letters
+        assert jellyfin_sort_key(f"/m/Show.{lang}.~untouched.srt") < jellyfin_sort_key(sub)
+
+
+# extensions read as subtitles: Jellyfin (NamingOptions.SubtitleFileExtensions, plus .idx) and Bazarr
+JELLYFIN_SUBTITLE_EXT = {".ass", ".mks", ".sami", ".smi", ".srt", ".ssa", ".sub", ".sup", ".vtt", ".idx"}
+BAZARR_SUBTITLE_EXT = {".srt", ".sub", ".smi", ".txt", ".ssa", ".ass", ".mpl", ".vtt", ".sup", ".idx"}
+
+
+@pytest.mark.parametrize("sub", ["/m/Show.fr.srt", "/m/Show.fr.hi.srt", "/m/Show.ru.forced.srt", "/m/Show.srt"])
+def test_the_hidden_download_is_not_read_as_a_subtitle(sub):
+    hidden = worker.kept_path(sub, "hidden")
+    assert hidden == sub + ".orig" and worker.is_own(hidden) and worker.is_own(hidden, "/m/Show.mkv")
+    assert os.path.splitext(hidden)[1] not in JELLYFIN_SUBTITLE_EXT | BAZARR_SUBTITLE_EXT
 
 
 def test_the_correction_is_written_under_the_download_name(env):
     write_late(env)
     rec = worker.process(env["video"], env["sub"])
-    assert rec["output_path"] == env["sub"] and rec["replaced_path"] == str(replaced_of(env))
+    assert rec["output_path"] == env["sub"] and rec["replaced_path"] == str(kept_of(env))
 
 
 @pytest.mark.parametrize("video,sub,expected", [
@@ -157,10 +199,13 @@ def test_tagged_path(video, sub, expected):
 
 @pytest.mark.parametrize("name,video,own", [
     ("Show.fr.srt", None, False), ("Show.replaced.fr.srt", None, True), ("Show.resync.fr.hi.srt", None, True),
+    ("Show.fr.untouched.srt", None, True), ("Show.fr.hi.untouched.srt", "Show.mkv", True),
+    ("Show.fr.srt.orig", None, True), ("Show.fr.srt.orig", "Show.mkv", True),
     ("Replaced Lives.fr.srt", None, False),
     ("The.Replaced.2024.fr.srt", "The.Replaced.2024.mkv", False),     # a word of the title, not our tag
     ("The.Replaced.2024.fr.srt", None, False),
     ("The.Replaced.2024.replaced.fr.srt", "The.Replaced.2024.mkv", True),
+    ("Untouched.2024.fr.srt", "Untouched.2024.mkv", False), ("Untouched.fr.srt", None, False),
     ("Resync.fr.srt", "Resync.mkv", False),
     ("other name.fr.replaced.srt", "A.mkv", True),                     # as earlier versions named it
 ])
@@ -195,19 +240,19 @@ def test_read_srt_utf8_bom(tmp_path):
 
 # --- decisions and files, replace mode (default) -----------------------------------------------
 
-def test_corrected_replaces_and_keeps_the_download_as_replaced(env):
+def test_corrected_replaces_and_keeps_the_download_as_untouched(env):
     before = write_late(env)
     worker.process(env["video"], env["sub"])
     rec = last_log(env)
     assert rec["status"] == "corrected" and rec["reference"] == "#3 en English"
-    assert replaced_of(env).read_bytes() == before                      # download kept, visible
+    assert kept_of(env).read_bytes() == before                      # download kept, visible
     out = core.parse(env["sub"])
     assert abs(out[0][0] - env["base"][0][0]) < 0.05                    # the subtitle is fixed
     assert sorted(p.name for p in env["folder"].iterdir()) == [
-        "Show - S01E01.fr.srt", "Show - S01E01.mkv", "Show - S01E01.replaced.fr.srt"]   # no .tmp, no side file
+        "Show - S01E01.fr.srt", "Show - S01E01.fr.untouched.srt", "Show - S01E01.mkv"]   # no .tmp, no side file
     r = row(env["sub"])
     assert r["status"] == "corrected" and r["output_path"] == env["sub"]
-    assert r["replaced_path"] == str(replaced_of(env)) and r["lang"] == "fr" and r["kind"] == "normal"
+    assert r["replaced_path"] == str(kept_of(env)) and r["lang"] == "fr" and r["kind"] == "normal"
 
 
 def test_in_sync_touches_nothing(env):
@@ -215,7 +260,7 @@ def test_in_sync_touches_nothing(env):
     before = Path(env["sub"]).read_bytes()
     worker.process(env["video"], env["sub"])
     assert last_log(env)["status"] == "in_sync"
-    assert Path(env["sub"]).read_bytes() == before and not replaced_of(env).exists()
+    assert Path(env["sub"]).read_bytes() == before and not kept_of(env).exists()
     assert row(env["sub"])["output_path"] is None
 
 
@@ -236,7 +281,7 @@ def test_force_starts_again_from_the_download(env):
     worker.process(env["video"], env["sub"], force=True)
     rec = last_log(env)
     assert rec["status"] == "corrected"
-    assert replaced_of(env).read_bytes() == before                      # not the worker's own output
+    assert kept_of(env).read_bytes() == before                      # not the worker's own output
     assert row(env["sub"])["runs"] == 2
 
 
@@ -248,7 +293,7 @@ def test_new_download_over_our_correction_is_processed_again(env):
     worker.process(env["video"], env["sub"], origin="bazarr")
     assert last_log(env)["status"] == "in_sync"
     assert Path(env["sub"]).read_bytes() == new
-    assert not replaced_of(env).exists()                                # the old download is gone
+    assert not kept_of(env).exists()                                # the old download is gone
 
 
 def test_new_late_download_replaces_the_old_replaced_file(env):
@@ -257,7 +302,7 @@ def test_new_late_download_replaces_the_old_replaced_file(env):
     second = write_late(env, shift=-7)
     worker.process(env["video"], env["sub"], origin="bazarr")
     assert last_log(env)["status"] == "corrected"
-    assert replaced_of(env).read_bytes() == second
+    assert kept_of(env).read_bytes() == second
     assert abs(core.parse(env["sub"])[0][0] - env["base"][0][0]) < 0.05
 
 
@@ -269,7 +314,7 @@ def test_replaced_video_resyncs_the_download_not_our_output(env):
     worker.process(env["video"], env["sub"])
     rec = last_log(env)
     assert rec["status"] == "corrected" and row(env["sub"])["runs"] == 2
-    assert replaced_of(env).read_bytes() == before
+    assert kept_of(env).read_bytes() == before
     assert abs(core.parse(env["sub"])[0][0] - (env["base"][0][0] + 3)) < 0.05
 
 
@@ -280,7 +325,7 @@ def test_no_correction_any_more_gives_the_download_its_name_back(env):
     env["refs"][:] = [(ref_cues([[s + 10, e + 10, k] for s, e, k in env["base"]]), "#3 en English")]
     worker.process(env["video"], env["sub"])
     assert last_log(env)["status"] == "in_sync"
-    assert Path(env["sub"]).read_bytes() == before and not replaced_of(env).exists()
+    assert Path(env["sub"]).read_bytes() == before and not kept_of(env).exists()
 
 
 def test_unsure_on_unrelated_reference(env):
@@ -288,7 +333,7 @@ def test_unsure_on_unrelated_reference(env):
     env["refs"][:] = [([[s, e, f"line k{k + 9999}"] for s, e, k in env["base"]], "#4 en Commentary")]
     worker.process(env["video"], env["sub"])
     assert last_log(env)["status"] == "unsure"
-    assert Path(env["sub"]).read_bytes() == before and not replaced_of(env).exists()
+    assert Path(env["sub"]).read_bytes() == before and not kept_of(env).exists()
 
 
 def test_fullest_reference_wins(env):
@@ -341,7 +386,7 @@ def test_every_external_subtitle_of_a_video_is_processed_on_its_own(env):
         worker.process(j["video"], j["sub"], j["origin"])
     for s in subs:
         assert row(s)["status"] == "corrected"
-        assert replaced_of(env, s).exists()
+        assert kept_of(env, s).exists()
 
 
 # --- side mode ---------------------------------------------------------------------------------
@@ -352,7 +397,7 @@ def test_side_mode_writes_resync_and_keeps_the_download(env, monkeypatch):
     worker.process(env["video"], env["sub"])
     side = Path(worker.side_path(env["video"], env["sub"]))
     assert side.name == "Show - S01E01.resync.fr.default.srt"
-    assert Path(env["sub"]).read_bytes() == before and side.exists() and not replaced_of(env).exists()
+    assert Path(env["sub"]).read_bytes() == before and side.exists() and not kept_of(env).exists()
     core.write(env["sub"], tgt_cues(env["base"]))                       # new download, in sync
     worker.process(env["video"], env["sub"])
     assert last_log(env)["status"] == "in_sync" and not side.exists()
@@ -363,7 +408,113 @@ def test_switching_from_replace_to_side_restores_the_download(env, monkeypatch):
     worker.process(env["video"], env["sub"])
     monkeypatch.setattr(worker, "OUTPUT", "side")
     worker.process(env["video"], env["sub"])
-    assert Path(env["sub"]).read_bytes() == before and not replaced_of(env).exists()
+    assert Path(env["sub"]).read_bytes() == before and not kept_of(env).exists()
+    assert Path(worker.side_path(env["video"], env["sub"])).exists()
+
+
+# --- the kept download: hidden, names of earlier versions ------------------------------------
+
+def as_earlier_version(env):
+    """Turn the files of the current run into what versions up to 0.12 left: the download kept
+    as '<video>.replaced.<lang>.srt', recorded so in state.db."""
+    legacy = legacy_of(env)
+    os.replace(kept_of(env), legacy)
+    st = State(worker.DB)
+    st.update(env["sub"], replaced_path=str(legacy))
+    st.close()
+    return legacy
+
+
+def test_hidden_keeps_the_download_under_a_name_no_player_reads(env, monkeypatch):
+    monkeypatch.setattr(worker, "KEEP_DOWNLOAD", "hidden")
+    before = write_late(env)
+    rec = worker.process(env["video"], env["sub"])
+    hidden = Path(env["sub"] + ".orig")
+    assert rec["status"] == "corrected" and rec["replaced_path"] == str(hidden) and hidden.read_bytes() == before
+    assert sorted(p.name for p in env["folder"].iterdir()) == [
+        "Show - S01E01.fr.srt", "Show - S01E01.fr.srt.orig", "Show - S01E01.mkv"]
+    assert worker.process(env["video"], env["sub"])["status"] == "unchanged"
+    worker.process(env["video"], env["sub"], force=True)                # starts again from the hidden download
+    assert last_log(env)["input_sha256"] == rec["input_sha256"] and hidden.read_bytes() == before
+    Path(env["video"]).write_bytes(b"another release")                   # no correction needed any more
+    env["refs"][:] = [(ref_cues([[s + 10, e + 10, k] for s, e, k in env["base"]]), "#3 en English")]
+    assert worker.process(env["video"], env["sub"])["status"] == "in_sync"
+    assert Path(env["sub"]).read_bytes() == before and not hidden.exists()
+
+
+@pytest.mark.parametrize("keep", ["visible", "hidden"])
+def test_the_name_of_an_earlier_version_is_renamed_without_a_new_run(env, monkeypatch, keep):
+    before = write_late(env)
+    worker.process(env["video"], env["sub"])
+    fixed = Path(env["sub"]).read_bytes()
+    legacy = as_earlier_version(env)
+    monkeypatch.setattr(worker, "KEEP_DOWNLOAD", keep)
+    rec = worker.process(env["video"], env["sub"], origin="backfill")
+    assert rec["status"] == "unchanged" and rec["renamed"] == [str(legacy), str(kept_of(env))]
+    assert files_of(env["folder"]) == {Path(env["sub"]).name: fixed, kept_of(env).name: before}
+    r = row(env["sub"])
+    assert r["replaced_path"] == str(kept_of(env)) and r["runs"] == 1 and r["status"] == "corrected"
+    assert last_log(env)["renamed"] == rec["renamed"]                  # a file changed: in the history
+    log_size = os.path.getsize(worker.LOG)
+    rec = worker.process(env["video"], env["sub"])
+    assert rec["status"] == "unchanged" and "renamed" not in rec and os.path.getsize(worker.LOG) == log_size
+
+
+def test_switching_between_visible_and_hidden_renames_on_the_next_check(env, monkeypatch):
+    before = write_late(env)
+    worker.process(env["video"], env["sub"])
+    fixed = Path(env["sub"]).read_bytes()
+    for keep in ("hidden", "visible", "hidden"):
+        monkeypatch.setattr(worker, "KEEP_DOWNLOAD", keep)
+        rec = worker.process(env["video"], env["sub"])
+        assert rec["status"] == "unchanged" and rec["renamed"][1] == str(kept_of(env))
+        assert files_of(env["folder"]) == {Path(env["sub"]).name: fixed, kept_of(env).name: before}
+        assert row(env["sub"])["replaced_path"] == str(kept_of(env)) and row(env["sub"])["runs"] == 1
+
+
+def test_the_name_of_an_earlier_version_with_state_lost(env):
+    before = write_late(env)
+    worker.process(env["video"], env["sub"])
+    fixed = Path(env["sub"]).read_bytes()
+    as_earlier_version(env)
+    os.remove(worker.DB)
+    rec = worker.process(env["video"], env["sub"])
+    assert rec["status"] == "corrected" and rec["input_sha256"] == row(env["sub"])["input_sha256"]
+    assert files_of(env["folder"]) == {Path(env["sub"]).name: fixed, kept_of(env).name: before}
+
+
+def test_a_new_download_over_a_correction_of_an_earlier_version(env):
+    write_late(env, shift=10)
+    worker.process(env["video"], env["sub"])
+    as_earlier_version(env)
+    second = write_late(env, shift=-7)
+    rec = worker.process(env["video"], env["sub"], origin="bazarr")
+    assert rec["status"] == "corrected" and kept_of(env).read_bytes() == second
+    assert not legacy_of(env).exists() and not list(env["folder"].glob("*.bak"))
+
+
+@pytest.mark.parametrize("content", ["download", "unknown"])
+def test_a_copy_under_an_earlier_name_beside_the_current_one(env, content):
+    """Both names exist (a copy restored by hand...): the current one is the download; the other
+    is removed when it holds the download, else kept aside."""
+    before = write_late(env)
+    worker.process(env["video"], env["sub"])
+    fixed = Path(env["sub"]).read_bytes()
+    legacy_of(env).write_bytes(before if content == "download" else b"something else")
+    rec = worker.process(env["video"], env["sub"])
+    assert rec["status"] == "corrected" and not legacy_of(env).exists()
+    assert files_of(env["folder"]) == {Path(env["sub"]).name: fixed, kept_of(env).name: before} | (
+        {} if content == "download" else {Path(rec["kept_aside"][0]).name: b"something else"})
+    assert worker.process(env["video"], env["sub"])["status"] == "unchanged"
+
+
+def test_switching_to_side_restores_a_download_kept_by_an_earlier_version(env, monkeypatch):
+    before = write_late(env)
+    worker.process(env["video"], env["sub"])
+    as_earlier_version(env)
+    monkeypatch.setattr(worker, "OUTPUT", "side")
+    worker.process(env["video"], env["sub"])
+    assert Path(env["sub"]).read_bytes() == before and not legacy_of(env).exists() and not kept_of(env).exists()
     assert Path(worker.side_path(env["video"], env["sub"])).exists()
 
 
@@ -419,7 +570,7 @@ def test_unknown_model_is_refused_before_anything(env):
 
 # --- skipped, queue, state ---------------------------------------------------------------------
 
-@pytest.mark.parametrize("which", ["missing_video", "not_srt", "replaced", "resync"])
+@pytest.mark.parametrize("which", ["missing_video", "not_srt", "untouched", "replaced", "resync"])
 def test_skipped(env, which):
     core.write(env["sub"], tgt_cues(env["base"]))
     video, sub = env["video"], env["sub"]
@@ -427,6 +578,8 @@ def test_skipped(env, which):
         video += ".gone"
     elif which == "not_srt":
         sub = sub[:-4] + ".ass"; Path(sub).write_text("x", encoding="utf-8")
+    elif which == "untouched":
+        sub = worker.kept_path(sub); core.write(sub, tgt_cues(env["base"]))
     else:
         tag = {"replaced": worker.REPLACED, "resync": worker.RESYNC}[which]
         sub = worker.tagged_path(video, sub, tag); core.write(sub, tgt_cues(env["base"]))
@@ -438,6 +591,8 @@ def test_backfill_queues_only_downloaded_subtitles_next_to_their_video(env):
     core.write(env["sub"], tgt_cues(env["base"]))
     for tag in worker.OWN_TAGS:
         Path(worker.tagged_path(env["video"], env["sub"], tag)).write_text("x", encoding="utf-8")
+    for keep in ("visible", "hidden"):
+        Path(worker.kept_path(env["sub"], keep)).write_text("x", encoding="utf-8")
     (env["folder"] / "Orphan.fr.srt").write_text("x", encoding="utf-8")                  # no video
     worker.backfill(str(env["tmp"] / "Show"))
     jobs = [json.loads(p.read_text(encoding="utf-8")) for p in Path(worker.QUEUE).glob("*.job")]
@@ -621,14 +776,14 @@ def files_of(folder):
 
 
 def test_lost_state_keeps_the_download_and_its_correction(env):
-    """state.db deleted: the .replaced file is the download, the subtitle its correction."""
+    """state.db deleted: the kept file is the download, the subtitle its correction."""
     before = write_late(env)
     worker.process(env["video"], env["sub"])
     fixed = Path(env["sub"]).read_bytes()
     os.remove(worker.DB)
     rec = worker.process(env["video"], env["sub"])
     assert rec["status"] == "corrected" and rec["input_sha256"] == row(env["sub"])["input_sha256"]
-    assert files_of(env["folder"]) == {Path(env["sub"]).name: fixed, replaced_of(env).name: before}
+    assert files_of(env["folder"]) == {Path(env["sub"]).name: fixed, kept_of(env).name: before}
     assert worker.process(env["video"], env["sub"])["status"] == "unchanged"
 
 
@@ -652,18 +807,18 @@ def test_lost_state_and_an_unknown_subtitle_is_kept_aside(env):
     os.remove(worker.DB)
     other = write_late(env, shift=-7)                                    # a new download, unknown to the state
     rec = worker.process(env["video"], env["sub"])
-    assert rec["status"] == "corrected" and replaced_of(env).read_bytes() == before
+    assert rec["status"] == "corrected" and kept_of(env).read_bytes() == before
     assert [p.read_bytes() for p in env["folder"].glob("*.bak")] == [other]
 
 
 def test_unknown_replaced_file_is_kept_aside_not_deleted(env):
-    """A .replaced file the state does not account for (here: the subtitle is a download in
+    """A kept file the state does not account for (here: the subtitle is a download in
     sync) is renamed, never removed."""
     core.write(env["sub"], tgt_cues(env["base"]))
     worker.process(env["video"], env["sub"])
-    replaced_of(env).write_bytes(b"something else")
+    kept_of(env).write_bytes(b"something else")
     rec = worker.process(env["video"], env["sub"])
-    assert rec["status"] == "in_sync" and not replaced_of(env).exists()
+    assert rec["status"] == "in_sync" and not kept_of(env).exists()
     assert [p.read_bytes() for p in env["folder"].glob("*.bak")] == [b"something else"]
     assert worker.process(env["video"], env["sub"])["status"] == "unchanged"
 
@@ -673,7 +828,7 @@ def test_old_replaced_file_of_a_known_download_is_replaced_by_the_new_download(e
     worker.process(env["video"], env["sub"])
     second = write_late(env, shift=-7)
     rec = worker.process(env["video"], env["sub"], origin="bazarr")
-    assert rec["status"] == "corrected" and replaced_of(env).read_bytes() == second
+    assert rec["status"] == "corrected" and kept_of(env).read_bytes() == second
     assert not list(env["folder"].glob("*.bak"))
 
 
@@ -693,12 +848,33 @@ def _new_video(shift):
     return step
 
 
+def _former(which, then=None):
+    """The kept download is found under a former name: the one versions up to 0.12 gave it
+    ("legacy"), or the other SEMSYNC_KEEP_DOWNLOAD value's ("other"), as state.db recorded it."""
+    def step(env, video, sub):
+        kept = worker.kept_path(sub)
+        if os.path.exists(kept):
+            old = (worker.tagged_path(video, sub, worker.REPLACED) if which == "legacy"
+                   else worker.former_kept_paths(video, sub)[0])
+            os.replace(kept, old)
+            st = State(worker.DB)
+            st.update(sub, replaced_path=old)
+            st.close()
+        if then:
+            then(env, video, sub)
+    return step
+
+
 SCENARIOS = {
     "first_correction": [_late(10)],
     "new_download": [_late(10), _late(-7)],
     "video_changed": [_late(10), _new_video(3)],
     "back_in_sync": [_late(10), _new_video(10)],
     "new_download_in_sync": [_late(10), _late(0, text="new k{k}")],
+    "legacy_name": [_late(10), _former("legacy")],
+    "legacy_name_new_download": [_late(10), _former("legacy", _late(-7))],
+    "legacy_name_back_in_sync": [_late(10), _former("legacy", _new_video(10))],
+    "other_keep_mode": [_late(10), _former("other")],
 }
 
 
@@ -710,12 +886,13 @@ def _pair(env, name):
     return folder, str(video), str(folder / "Show - S01E01.fr.srt")
 
 
-@pytest.mark.parametrize("output", ["replace", "side"])
+@pytest.mark.parametrize("output", ["replace", "replace_hidden", "side"])
 @pytest.mark.parametrize("scenario", SCENARIOS)
 def test_a_run_interrupted_at_any_step_loses_nothing(env, monkeypatch, scenario, output):
     """The process is killed after each file operation in turn (and before the decision is
     recorded); the next run must end with the files an uninterrupted run gives."""
-    monkeypatch.setattr(worker, "OUTPUT", output)
+    monkeypatch.setattr(worker, "OUTPUT", output.split("_")[0])
+    monkeypatch.setattr(worker, "KEEP_DOWNLOAD", "hidden" if output.endswith("hidden") else "visible")
     steps = SCENARIOS[scenario]
 
     def play(name, crash_at=None, crash_put=False):
@@ -723,7 +900,7 @@ def test_a_run_interrupted_at_any_step_loses_nothing(env, monkeypatch, scenario,
         for step in steps[:-1]:
             step(env, video, sub); worker.process(video, sub)
         steps[-1](env, video, sub)
-        calls, real_replace, real_put = [0], os.replace, State.put
+        calls, real_replace, real_put, real_update = [0], os.replace, State.put, State.update
 
         def replace(a, b):
             calls[0] += 1
@@ -735,29 +912,38 @@ def test_a_run_interrupted_at_any_step_loses_nothing(env, monkeypatch, scenario,
             if crash_put:
                 raise KeyboardInterrupt("killed")
             return real_put(self, rec)
+
+        def update(self, sub, **fields):
+            if crash_put:
+                raise KeyboardInterrupt("killed")
+            return real_update(self, sub, **fields)
         with monkeypatch.context() as m:
             m.setattr(os, "replace", replace)
             m.setattr(State, "put", put)
+            m.setattr(State, "update", update)
             try:
-                worker.process(video, sub)
+                first = worker.process(video, sub)["status"]
                 crashed = False
             except KeyboardInterrupt:
-                crashed = True
+                first, crashed = None, True
         if crashed:
             worker.process(video, sub)                               # the next run
-        return crashed, files_of(folder), worker.process(video, sub)["status"]
+        again = worker.process(video, sub)["status"]
+        kept = row(sub)["replaced_path"]
+        return crashed, (files_of(folder), kept and os.path.basename(kept)), again, first
 
-    _, expected, again = play("reference")
-    assert again == "unchanged" and not any(n.endswith((".bak", ".tmp")) for n in expected)
+    _, expected, again, first = play("reference")
+    assert again == "unchanged" and not any(n.endswith((".bak", ".tmp")) for n in expected[0])
     n = 1
     while True:
-        crashed, got, again = play(f"crash{n}", crash_at=n)
+        crashed, got, again, _ = play(f"crash{n}", crash_at=n)
         assert got == expected and again == "unchanged", f"killed at file operation {n}"
         if not crashed:
             break
         n += 1
-    crashed, got, again = play("crash_put", crash_put=True)
-    assert crashed and got == expected and again == "unchanged"
+    crashed, got, again, _ = play("crash_put", crash_put=True)
+    # a run that records nothing (unchanged, nothing renamed) cannot be killed while recording
+    assert (crashed or first == "unchanged") and got == expected and again == "unchanged"
 
 
 def test_the_intent_is_recorded_before_any_file_changes(env, monkeypatch):
@@ -814,7 +1000,7 @@ def test_written_files_keep_the_permissions_of_the_download(env):
     os.chmod(env["sub"], 0o640)
     worker.process(env["video"], env["sub"])
     assert os.stat(env["sub"]).st_mode & 0o777 == 0o640
-    assert os.stat(replaced_of(env)).st_mode & 0o777 == 0o640
+    assert os.stat(kept_of(env)).st_mode & 0o777 == 0o640
 
 
 # --- queue -------------------------------------------------------------------------------------
@@ -928,7 +1114,8 @@ def test_backfill_queues_a_title_that_contains_our_tag(env):
 # --- settings and command line -----------------------------------------------------------------
 
 @pytest.mark.parametrize("attr,value,word", [
-    ("OUTPUT", "sidee", "SEMSYNC_OUTPUT"), ("EXTRA_LINES", "remove", "SEMSYNC_EXTRA_LINES"),
+    ("OUTPUT", "sidee", "SEMSYNC_OUTPUT"), ("KEEP_DOWNLOAD", "invisible", "SEMSYNC_KEEP_DOWNLOAD"),
+    ("EXTRA_LINES", "remove", "SEMSYNC_EXTRA_LINES"),
     ("LOG_MAX_BYTES", None, "SEMSYNC_LOG_MAX_MB"), ("MEDIA_ROOT", "/no/such/folder", "SEMSYNC_MEDIA_ROOT"),
 ])
 @pytest.mark.parametrize("cmd", [["one", "v.mkv", "v.fr.srt"], ["backfill", "/nowhere"], ["run"]])

@@ -2,6 +2,8 @@
 are mapped to the current ones."""
 import sqlite3
 
+import pytest
+
 from semantic_subsync.state import FIELDS, State
 
 # the table as version 0.10 created it (no model, model_choice, seg nor pending column)
@@ -51,5 +53,24 @@ def test_begin_then_put(tmp_path):
         assert r["pending"] is None and r["runs"] == 1
         st.begin("/m/A.fr.srt", intent)           # an existing row keeps its decision until put
         assert st.get("/m/A.fr.srt")["status"] == "corrected"
+    finally:
+        st.close()
+
+
+def test_update_changes_some_columns_only(tmp_path):
+    """A kept download renamed (a new name, the other keep mode): its path is recorded without
+    counting a run nor changing the decision."""
+    st = State(str(tmp_path / "state.db"))
+    try:
+        st.put({"sub": "/m/A.ru.srt", "status": "corrected", "replaced_path": "/m/A.replaced.ru.srt"})
+        before = st.get("/m/A.ru.srt")
+        assert st.update("/m/A.ru.srt", replaced_path="/m/A.ru.untouched.srt")
+        after = st.get("/m/A.ru.srt")
+        assert after == {**before, "replaced_path": "/m/A.ru.untouched.srt"}
+        assert not st.update("/m/B.ru.srt", replaced_path="x")              # no such row: nothing added
+        assert st.get("/m/B.ru.srt") is None
+        for bad in ({"runs": 5}, {"pending": "{}"}, {"sub": "/m/C.srt"}, {"nope": 1}, {}):
+            with pytest.raises(ValueError):
+                st.update("/m/A.ru.srt", **bad)
     finally:
         st.close()
