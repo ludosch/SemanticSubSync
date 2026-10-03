@@ -1,4 +1,5 @@
 using System;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -10,14 +11,21 @@ using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.SemanticSubSync.Engine;
 
-/// <summary>The engine's decision on one subtitle: the JSON line `semantic-subsync-worker one` prints.</summary>
-public sealed record EngineResult(string Status, bool FilesChanged, string Line);
+/// <summary>The engine's decision on one subtitle: the JSON line `semantic-subsync-worker one` prints,
+/// or "error" / "timeout" when there is none.</summary>
+public sealed record EngineResult(string Status, bool FilesChanged, string Line)
+{
+    public static EngineResult Failed(string status) => new(status, false, string.Empty);
+}
 
 /// <summary>Runs `semantic-subsync-worker one VIDEO SUB`: the worker picks the embedded reference,
 /// re-times, writes the files and keeps its state (state.db, semsync.log) in the plugin's data folder.</summary>
 public sealed class EngineRunner
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromMinutes(30);
+
+    // decisions that put nothing on disk; every other one may have written, restored or removed a file
+    private static readonly string[] Untouched = ["skipped", "changed_during_run", "error", "timeout"];
 
     private readonly IMediaEncoder _mediaEncoder;
     private readonly ILogger<EngineRunner> _logger;
@@ -35,9 +43,10 @@ public sealed class EngineRunner
         psi.Environment["HF_HOME"] = Path.Combine(EngineInstaller.DataDir, "models");
     }
 
-    public async Task<EngineResult?> RunAsync(string video, string subtitle, CancellationToken ct)
+    /// <summary>Throws only when `ct` is cancelled (Jellyfin is stopping); a timeout or a crash of the
+    /// engine is a result ("timeout", "error").</summary>
+    public async Task<EngineResult> RunAsync(string video, string subtitle, CancellationToken ct)
     {
-        var config = Plugin.Instance!.Configuration;
         var psi = new ProcessStartInfo(EngineInstaller.WorkerPath)
         {
             RedirectStandardOutput = true,
@@ -47,7 +56,7 @@ public sealed class EngineRunner
         psi.ArgumentList.Add(video);
         psi.ArgumentList.Add(subtitle);
         SetEnvironment(psi);
-        psi.Environment["SEMSYNC_OUTPUT"] = config.OutputMode == "side" ? "side" : "replace";
+        psi.Environment["SEMSYNC_OUTPUT"] = Plugin.Instance!.Configuration.Output;
         // the engine calls ffmpeg/ffprobe: use the ones Jellyfin ships with
         var ffmpegDir = Path.GetDirectoryName(_mediaEncoder.EncoderPath);
         if (!string.IsNullOrEmpty(ffmpegDir))
@@ -57,36 +66,68 @@ public sealed class EngineRunner
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeout.CancelAfter(Timeout);
-        using var p = Process.Start(psi) ?? throw new InvalidOperationException("the engine did not start");
-        var stdout = p.StandardOutput.ReadToEndAsync(timeout.Token);
-        var stderr = p.StandardError.ReadToEndAsync(timeout.Token);
+        Process p;
         try
         {
-            await p.WaitForExitAsync(timeout.Token).ConfigureAwait(false);
+            p = Process.Start(psi) ?? throw new InvalidOperationException("the engine did not start");
         }
-        catch (OperationCanceledException)
+        catch (Exception ex) when (ex is Win32Exception or InvalidOperationException)
         {
-            p.Kill(entireProcessTree: true);
-            throw;
+            _logger.LogError(ex, "SemanticSubSync: the engine did not start on {Subtitle}", subtitle);
+            return EngineResult.Failed("error");
         }
 
-        var line = (await stdout.ConfigureAwait(false)).Split('\n', StringSplitOptions.RemoveEmptyEntries).LastOrDefault()?.Trim();
-        if (p.ExitCode != 0 || string.IsNullOrEmpty(line) || !line.StartsWith('{'))
+        using (p)
         {
-            _logger.LogError("SemanticSubSync: engine failed on {Subtitle} (exit {Code}): {Error}",
-                subtitle, p.ExitCode, EngineInstaller.Tail(await stderr.ConfigureAwait(false)));
-            return null;
-        }
+            var stdout = p.StandardOutput.ReadToEndAsync(timeout.Token);
+            var stderr = p.StandardError.ReadToEndAsync(timeout.Token);
+            try
+            {
+                await p.WaitForExitAsync(timeout.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                p.Kill(entireProcessTree: true);
+                if (ct.IsCancellationRequested)
+                {
+                    throw;   // Jellyfin is stopping
+                }
 
-        using var doc = JsonDocument.Parse(line);
-        var root = doc.RootElement;
-        var status = root.TryGetProperty("status", out var s) ? s.GetString() ?? "?" : "?";
-        if (status == "unchanged" && root.TryGetProperty("last", out var last) && last.ValueKind == JsonValueKind.String)
-        {
-            status += ":" + last.GetString();   // e.g. "unchanged:corrected", the decision it keeps
+                _logger.LogError("SemanticSubSync: the engine took more than {Minutes} min on {Subtitle}: stopped",
+                    Timeout.TotalMinutes, subtitle);
+                return EngineResult.Failed("timeout");
+            }
+
+            var line = (await stdout.ConfigureAwait(false)).Split('\n', StringSplitOptions.RemoveEmptyEntries).LastOrDefault()?.Trim();
+            if (p.ExitCode != 0 || string.IsNullOrEmpty(line) || !line.StartsWith('{'))
+            {
+                _logger.LogError("SemanticSubSync: engine failed on {Subtitle} (exit {Code}): {Error}",
+                    subtitle, p.ExitCode, EngineInstaller.Tail(await stderr.ConfigureAwait(false)));
+                return EngineResult.Failed("error");
+            }
+
+            string status;
+            try
+            {
+                using var doc = JsonDocument.Parse(line);
+                var root = doc.RootElement;
+                status = root.ValueKind == JsonValueKind.Object && root.TryGetProperty("status", out var s) && s.ValueKind == JsonValueKind.String
+                    ? s.GetString()!
+                    : "?";
+                if (status == "unchanged" && root.TryGetProperty("last", out var last) && last.ValueKind == JsonValueKind.String)
+                {
+                    status += ":" + last.GetString();   // e.g. "unchanged:corrected", the decision it keeps
+                }
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogError("SemanticSubSync: unreadable engine output on {Subtitle}: {Error}: {Line}",
+                    subtitle, ex.Message, EngineInstaller.Tail(line));
+                return EngineResult.Failed("error");
+            }
+
+            var changed = !status.StartsWith("unchanged", StringComparison.Ordinal) && !Untouched.Contains(status);
+            return new EngineResult(status, changed, line);
         }
-        // any decision may have written, restored or removed a file; only these two touch nothing
-        var changed = !status.StartsWith("unchanged", StringComparison.Ordinal) && status != "skipped";
-        return new EngineResult(status, changed, line);
     }
 }

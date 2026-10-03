@@ -38,6 +38,8 @@ FIELDS = {
     "secs": "processing time in seconds",
     "processed_at": "date of the last run",
     "runs": "how many times it was processed",
+    "pending": "files being written, JSON (input_sha256, output_sha256, output_path): recorded before they "
+               "change and cleared once the decision is recorded, so an interrupted run is recognised",
 }
 _REAL = {"coverage", "max_abs_offset", "video_mtime", "secs"}
 _INT = {"segments", "dropped", "input_size", "video_size", "runs"}
@@ -63,15 +65,35 @@ class State:
         cols = ", ".join(f"{c} {'REAL' if c in _REAL else 'INTEGER' if c in _INT else 'TEXT'}"
                          + (" PRIMARY KEY" if c == "sub" else "") for c in FIELDS)
         self.db.execute(f"CREATE TABLE IF NOT EXISTS subtitles ({cols})")
+        # a database written by an older version: its missing columns are added (empty), and the
+        # decision 0.10 called "refused" is the one called "unsure" since
+        have = {r[1] for r in self.db.execute("PRAGMA table_info(subtitles)")}
+        for c in FIELDS:
+            if c not in have:
+                self.db.execute(f"ALTER TABLE subtitles ADD COLUMN {c} {'REAL' if c in _REAL else 'INTEGER' if c in _INT else 'TEXT'}")
+        self.db.execute("UPDATE subtitles SET status = 'unsure' WHERE status = 'refused'")
         self.db.commit()
 
     def get(self, sub):
         r = self.db.execute("SELECT * FROM subtitles WHERE sub = ?", (sub,)).fetchone()
-        return dict(r) if r else None
+        if not r:
+            return None
+        r = dict(r)
+        r["pending"] = json.loads(r["pending"]) if r["pending"] else None
+        return r
+
+    def begin(self, sub, intent):
+        """Record the files about to be written for `sub` (`intent`: input_sha256, output_sha256,
+        output_path) before any of them changes; `put` clears it. A run interrupted in between
+        leaves both the previous and the intended hashes, so every file can still be recognised."""
+        if not self.db.execute("UPDATE subtitles SET pending = ? WHERE sub = ?", (json.dumps(intent), sub)).rowcount:
+            self.db.execute("INSERT INTO subtitles (sub, pending, runs) VALUES (?, ?, 0)", (sub, json.dumps(intent)))
+        self.db.commit()
 
     def put(self, rec):
         old = self.get(rec["sub"]) or {}
         row = {c: rec.get(c) for c in FIELDS}
+        row["pending"] = None
         row["runs"] = (old.get("runs") or 0) + 1
         row["processed_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
         for k in ("settings", "seg"):

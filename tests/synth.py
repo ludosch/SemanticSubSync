@@ -31,7 +31,8 @@ MIN_SIM = 0.55                 # the fake embedder has MiniLM's similarity scale
 
 
 def use_fake_model(monkeypatch):
-    """Every model becomes the fake embedder, with the matching min_sim."""
+    """Every model becomes the fake embedder, with the matching min_sim (each real model's own
+    min_sim is checked against real sentences in test_model.py)."""
     monkeypatch.setattr("semantic_subsync.core.embed", fake_embed)
     from semantic_subsync import core
     for name, m in core.MODELS.items():

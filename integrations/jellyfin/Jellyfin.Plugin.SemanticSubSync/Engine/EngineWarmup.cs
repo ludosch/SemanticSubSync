@@ -6,9 +6,10 @@ using Microsoft.Extensions.Hosting;
 namespace Jellyfin.Plugin.SemanticSubSync.Engine;
 
 /// <summary>Installs the engine and its model in the background once Jellyfin has started (the restart
-/// that follows the plugin's installation), so the first sync does not wait for the download. After a
-/// failure it tries again every hour; a sync that needs the engine also tries, and waits for an
-/// installation in progress rather than starting a second one.</summary>
+/// that follows the plugin's installation), so the first sync does not wait for the download. While no
+/// engine can run, it tries again every hour; a sync that needs the engine also tries (at most once an
+/// hour after a failure), and waits for an installation in progress rather than starting a second one.
+/// A failed update leaves the previous engine in use.</summary>
 public sealed class EngineWarmup : BackgroundService
 {
     private static readonly TimeSpan AfterStart = TimeSpan.FromMinutes(2);

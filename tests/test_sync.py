@@ -308,3 +308,53 @@ def test_max_abs_offset_includes_drift():
     out, st = run(tgt, ref_cues(base))
     largest = max(abs(o[0] - t[0]) for o, t in zip(out, tgt))
     assert abs(st["max_abs_offset"] - largest) < 0.5
+
+
+# ---------- settings ----------
+
+@pytest.mark.parametrize("over,match", [
+    ({"topkk": 3}, "unknown engine setting"), ({"extra_lines": "maybe"}, "extra_lines"),
+    ({"merge": "sum"}, "merge"), ({"stride": 0}, "stride"),
+])
+def test_params_reject_unknown_or_invalid_settings(over, match):
+    with pytest.raises(ValueError, match=match):
+        core.params("static", **over)
+
+
+def test_defaults_are_read_only():
+    with pytest.raises(TypeError):
+        core.P["deadband"] = 0.0
+    assert core.params("static")["deadband"] == core.P["deadband"]
+
+
+# ---------- placement details ----------
+
+def _segs(*specs):
+    """Segments (t0, t1, a, k1) with no drift."""
+    return [{"t0": t0, "t1": t1, "a": a, "b": 0.0, "n": 2, "k1": k1} for t0, t1, a, k1 in specs]
+
+
+def test_a_long_reference_line_counts_however_many_lines_start_inside_it():
+    """Between two segments a cue is placed where the reference speaks: a long reference line
+    (a song, a sign) still speaking counts even with many short lines starting after it."""
+    segs = _segs((100.0, 120.0, 0.0, 0), (140.0, 200.0, 0.0, 1))
+    spoken = [(100.0, 200.0)] + [(101.0 + k, 101.5 + k) for k in range(8)]
+    reach = [max(e for _, e in spoken[:n + 1]) for n in range(len(spoken))]
+    assert core._place(130.0, 132.0, segs, [121.0, 201.0], spoken, reach) == (0.0, None)
+
+
+def test_an_extra_line_is_not_kept_over_a_long_reference_line():
+    spoken = [(0.0, 100.0)] + [(10.0 + k, 10.5 + k) for k in range(9)]
+    out, kept = core._keep_extra([], [[50.0, 52.0, "credit"]], spoken, [(0, [0.0])])
+    assert kept == 0 and out == []
+
+
+def test_cues_sharing_a_start_time_keep_their_own_end():
+    """The end of a segment is that of its last anchor cue, not of another cue starting at the
+    same time (a sign shown with a line)."""
+    tgt = [[100.0, 101.0, "p"], [120.0, 121.0, "A"], [120.0, 125.0, "SIGN"], [128.0, 129.0, "gap"],
+           [130.0, 131.0, "n"], [200.0, 201.0, "z"]]
+    ref = [[100.0, 101.0, "p"], [115.0, 116.5, "a"], [122.0, 125.0, "said"], [125.0, 126.0, "n"], [195.0, 196.0, "z"]]
+    segs = _segs((100.0, 120.0, 0.0, 1), (130.0, 200.0, -5.0, 3))
+    out, _ = core._retime(tgt, ref, segs, [0, 1, 4, 5], core.params("static"))
+    assert [123.0, 124.0, "gap"] in out

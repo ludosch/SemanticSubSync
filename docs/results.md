@@ -32,8 +32,14 @@ SemanticSubSync left alone (unsure) the ones where it would have done damage:
 - the threshold (0.25) sits in that gap; another library may need another value
   (`--min-coverage`).
 
-**Audio-only tools,** for comparison, on the same kind of distortions: ffsubsync 29 / 44,
-alass 24 / 44, subaligner 2 / 44, with no confidence signal on failures.
+**Audio-only tools,** for comparison, on a smaller set built the same way: 11 videos, their
+French track left as is, offset, cut 3 times, or changed from 25 to 23.976 fps (or back), 44
+cases. Each tool re-synced it on the video's audio, scored against the original track:
+ffsubsync 29 / 44 (none of the 11 cut cases), alass 24 / 44, subaligner 2 / 44, with no
+confidence signal on failures.
+
+The benchmark videos are copyrighted, so neither they nor the benchmark scripts are published:
+these figures cannot be rerun from the repository.
 
 ## Speed
 
@@ -91,5 +97,6 @@ stays below 100 %.
   0.3 s was created.
 - **Encodings:** 47 of the 66 files were not UTF-8 (see [Usage](usage.md#encodings)).
 
-This is not a published benchmark. The test suite reproduces each distortion on synthetic
-dialogue (see [CONTRIBUTING.md](../CONTRIBUTING.md#tests)).
+Neither the benchmark nor these datasets are published. The test suite reproduces each
+distortion on synthetic dialogue (see [CONTRIBUTING.md](../CONTRIBUTING.md#tests)), and the
+[lighthouse example](../examples/lighthouse) can be rerun by anyone.

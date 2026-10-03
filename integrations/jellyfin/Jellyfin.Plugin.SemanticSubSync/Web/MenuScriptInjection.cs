@@ -1,16 +1,19 @@
 using System;
 using System.IO;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging;
 using Microsoft.Net.Http.Headers;
 
 namespace Jellyfin.Plugin.SemanticSubSync.Web;
 
 /// <summary>Adds the plugin's script (the "Sync subtitles" menu entry) to the web client's
-/// index.html as it is served. Nothing is written to Jellyfin's files.</summary>
+/// index.html as it is served. Nothing is written to Jellyfin's files. Written against jellyfin-web 12.1:
+/// when the page no longer looks as expected, the Jellyfin log says so once.</summary>
 public sealed class MenuScriptInjection
 {
     private const string ScriptName = "semanticsubsync-menu.js";
@@ -19,6 +22,7 @@ public sealed class MenuScriptInjection
         [HeaderNames.IfNoneMatch, HeaderNames.IfModifiedSince, HeaderNames.Range, HeaderNames.IfRange];
 
     private readonly RequestDelegate _next;
+    private int _warned;
 
     public MenuScriptInjection(RequestDelegate next)
     {
@@ -27,7 +31,7 @@ public sealed class MenuScriptInjection
 
     public static string Script => ScriptName;
 
-    public async Task InvokeAsync(HttpContext context)
+    public async Task InvokeAsync(HttpContext context, ILogger<MenuScriptInjection> logger)
     {
         var path = context.Request.Path.Value ?? string.Empty;
         var isIndex = path.EndsWith("/web/", StringComparison.OrdinalIgnoreCase)
@@ -63,6 +67,11 @@ public sealed class MenuScriptInjection
         var head = html?.IndexOf("</head>", StringComparison.OrdinalIgnoreCase) ?? -1;
         if (html is null || head < 0 || html.Contains(ScriptName, StringComparison.Ordinal))
         {
+            if (context.Response.StatusCode == StatusCodes.Status200OK && head < 0 && Interlocked.Exchange(ref _warned, 1) == 0)
+            {
+                logger.LogWarning("SemanticSubSync: the web client's index.html could not be edited (compressed, or no </head>): no \"Sync subtitles\" menu entry");
+            }
+
             buffer.Position = 0;
             await buffer.CopyToAsync(original, context.RequestAborted).ConfigureAwait(false);
             return;

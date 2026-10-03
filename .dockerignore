@@ -1,0 +1,9 @@
+# The image only needs these (see Dockerfile): a small build context, nothing local leaks in.
+*
+!requirements.txt
+!pyproject.toml
+!README.md
+!LICENSE
+!src/
+**/__pycache__
+**/*.pyc

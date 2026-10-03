@@ -38,7 +38,7 @@ calé sur la vidéo.
 | alass 2.0.0 | ✅ synchronisé | ❌ une partie du fichier décalée | ❌ réécrit le fichier au lieu de le laisser tel quel |
 | ffsubsync 0.5.1 (avec ou sans `--split-penalty`) | ❌ la moitié du fichier décalée | ❌ la moitié du fichier décalée | ❌ réécrit le fichier au lieu de le laisser tel quel |
 | LAPSE 2.2.3 | ❌ la moitié du fichier décalée, se dit « solid » | ❌ la moitié du fichier décalée, se dit « solid » | ❌ réécrit le fichier et se dit « solid » |
-| **SemanticSubSync** | ✅ **synchronisé** | ✅ **synchronisé** | ✅ **ignoré (pas sûr), fichier intact** |
+| **SemanticSubSync** | ✅ **synchronisé** | ✅ **synchronisé** | ✅ **pas sûr, fichier laissé tel quel** |
 
 Cela ne décrit que ces fichiers, pas toutes les vidéos. Les chiffres, les détails et les scripts
 pour le rejouer sont dans le dossier de l'exemple.
@@ -51,7 +51,7 @@ Deux échecs reviennent dans cet exemple et dans le [benchmark](docs/results.md)
   il trouve où est la coupe et déplace chaque partie de son propre décalage.
 - **Échecs annoncés comme réussis.** Un fichier resté décalé d'une minute, ou recalé sur une
   piste commentaire, ressort comme une réussite. SemanticSubSync compte les répliques qu'il a pu
-  apparier : sous 25 %, il s'arrête (**pas sûr**) et n'écrit rien.
+  apparier : sous 25 %, il n'est **pas sûr** et n'écrit rien.
 
 ## Exemple
 
@@ -64,7 +64,7 @@ Un sous-titre français a été téléchargé pour un épisode de 10 minutes (un
 
 ```console
 $ semantic-subsync downloaded.fr.srt reference.en.srt
-corrected -> downloaded.fr.synced.srt (2 segment(s), largest shift +90.69 s) [reference: reference.en.srt]
+corrected -> downloaded.fr.synced.srt (2 segment(s), largest shift +90.68 s) [reference: reference.en.srt]
 ```
 
 | Réplique | Dite dans la vidéo à | Avant | Après |
@@ -90,7 +90,7 @@ corrigé :
   en segments à décalage constant : cela absorbe les coupes et les scènes ajoutées.
 - Les lignes qui n'ont pas de place dans la vidéo (une scène qu'elle n'a pas, un « Précédemment
   dans… ») sont retirées.
-- Moins de 25 % des répliques appariées : **ignoré (pas sûr)**, le fichier n'est pas modifié.
+- Moins de 25 % des répliques appariées : **pas sûr**, le fichier est laissé tel quel.
   Toutes les corrections sous 0,5 s : le fichier **n'est pas modifié**.
 
 Aucun service d'IA, aucun accès réseau une fois le modèle téléchargé, et la même entrée donne
@@ -100,15 +100,17 @@ chaque garde-fou : [How it works](docs/how-it-works.md) (en anglais).
 ## Résultats
 
 Ces chiffres décrivent les fichiers sur lesquels ils ont été mesurés, pas ce que l'outil fera
-sur n'importe quelle vidéo.
+sur n'importe quelle vidéo. Ils ont été mesurés avec le modèle minilm (le benchmark en version
+0.7) ; le modèle static, celui par défaut, relancé sur les mêmes fichiers, a réussi autant de cas
+du benchmark et pris les mêmes décisions sur les jeux de données.
 
 - **Benchmark** (105 pistes intégrées déformées : décalages, changements de cadence, coupes,
   scènes ajoutées et retirées) : SemanticSubSync a réussi 104 cas ; alass en a réussi 84, avec
   10 échecs graves dont aucun signalé.
 - **Jeux de données réels** (114 paires de sous-titres téléchargés, en 16 langues) : 66 laissées
   telles quelles, déjà synchronisées ; 44 corrigées, la part médiane de répliques à moins de 1 s
-  de leur traduction passant de 4,5 % à 91,5 % ; 4 ignorées (pas sûr), dont les fichiers
-  appartenaient à un autre épisode.
+  de leur traduction passant de 4,5 % à 91,5 % ; 4 « pas sûr », dont les fichiers appartenaient
+  à un autre épisode.
 
 Méthode, vitesse sur un NAS et tous les chiffres : [Results](docs/results.md) (en anglais).
 
@@ -152,11 +154,11 @@ version téléchargée reste disponible comme piste supplémentaire. Voir le
 
 ### Ligne de commande
 
-Python 3.11 ou plus récent, sur Linux, macOS ou Windows 64 bits (x86-64 ou ARM64) ; ffmpeg si la
-référence est une vidéo.
+Python 3.11 ou plus récent, sur Linux 64 bits (x86-64 ou ARM64), macOS ou Windows 64 bits ;
+ffmpeg si la référence est une vidéo.
 
 ```bash
-pip install "semantic-subsync[model] @ git+https://github.com/ludosch/SemanticSubSync"
+pip install "semantic-subsync[model] @ git+https://github.com/ludosch/SemanticSubSync@v0.12.0"
 ```
 
 Le modèle par défaut (environ 220 Mo) est téléchargé depuis Hugging Face à la première utilisation.
@@ -177,8 +179,7 @@ semantic-subsync SOUS-TITRE REFERENCE [-o SORTIE]
   intégré le plus complet est utilisé).
 - L'entrée n'est jamais modifiée : le résultat va dans `SOUS-TITRE.synced.srt` ; rien n'est
   écrit s'il est déjà synchronisé.
-- Code de sortie : `0` corrigé ou déjà synchronisé, `1` ignoré (pas sûr, rien n'est écrit),
-  `2` erreur.
+- Code de sortie : `0` corrigé ou déjà synchronisé, `1` pas sûr (rien n'est écrit), `2` erreur.
 
 Toutes les options, les encodages et l'API Python : [Usage](docs/usage.md). Les deux modèles de
 phrases et les langues qu'ils couvrent : [Models](docs/models.md). Ces pages sont en anglais.

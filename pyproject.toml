@@ -13,17 +13,18 @@ classifiers = [
     "Topic :: Multimedia :: Video",
 ]
 requires-python = ">=3.11"
-dependencies = ["numpy>=2", "charset-normalizer>=3"]
+# tokenizers: the default static model needs nothing else
+dependencies = ["numpy>=2", "charset-normalizer>=3", "tokenizers>=0.20"]
 
 [project.urls]
 Repository = "https://github.com/ludosch/SemanticSubSync"
 Changelog = "https://github.com/ludosch/SemanticSubSync/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
-# The sentence models. Not needed by the unit tests, which use a deterministic fake embedder.
-model = ["fastembed>=0.8", "tokenizers>=0.20"]
-# The static model only (no transformer runtime): what the Jellyfin plugin installs.
-static = ["tokenizers>=0.20"]
+# The minilm model (transformer runtime). The static model needs no extra.
+model = ["fastembed>=0.8"]
+# Kept for the installs that name it (the Jellyfin plugin's semantic-subsync[static]): now in the base install.
+static = []
 
 [project.scripts]
 semantic-subsync = "semantic_subsync.cli:main"

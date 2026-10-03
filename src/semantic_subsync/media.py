@@ -1,11 +1,17 @@
 """Reading subtitle files and the text subtitles embedded in a video (needs ffmpeg / ffprobe)."""
 import json, os, re, subprocess, tempfile
 
+from charset_normalizer import from_bytes
+
 from . import core
 
 TEXT_CODECS = {"subrip", "ass", "ssa", "mov_text", "webvtt", "text"}     # bitmap (PGS, VobSub) cannot be read
 VIDEO_EXT = (".mkv", ".mp4", ".m4v", ".avi", ".mov", ".ts", ".webm")
-MIN_REF_CUES = 20          # fewer cues: a forced/signs track or a partial one, not a usable reference
+MIN_REF_CUES = core.MIN_CUES   # fewer cues: a forced/signs track or a partial one, not a usable reference
+
+
+class MediaError(RuntimeError):
+    """ffprobe / ffmpeg missing, failing on a file or too slow."""
 
 
 # Legacy Windows code page of each language, for subtitles that are not UTF-8 (most older
@@ -27,6 +33,17 @@ _CODEPAGES = {
     "cp949": "ko kor",
 }
 CODEPAGE = {lang: cp for cp, langs in _CODEPAGES.items() for lang in langs.split()}
+
+# Embedded tracks are tagged ISO 639-2 ("fre", "ger"), file names mostly ISO 639-1 ("fr", "de"):
+# both are brought to one key to tell whether a downloaded subtitle duplicates an embedded one.
+_SAME_LANGUAGE = ("en eng|fr fre fra|es spa|de ger deu|it ita|pt por|pt-br pob br|nl dut nld|sv swe|"
+                  "da dan|no nor nb nob|fi fin|pl pol|cs cze ces cz|sk slo slk|hu hun|ro rum ron|hr hrv|"
+                  "sl slv|sr srp|bs bos|bg bul|mk mac mkd|ru rus|uk ukr ua|be bel|el gre ell gr|tr tur|"
+                  "he heb|ar ara|fa per fas|hi hin|th tha|vi vie|id ind|ms may msa|ja jpn jp|ko kor|"
+                  "zh chi zho cn zh-cn zh-tw|ca cat|eu baq eus|gl glg|et est|lv lav|lt lit|is ice isl")
+LANGUAGE_KEY = {tag: g.split()[0] for g in _SAME_LANGUAGE.split("|") for tag in g.split()}
+HI_TAGS = {"hi", "sdh", "cc"}
+_HI_TITLE = re.compile(r"\b(sdh|hi|cc|hoh|deaf|hearing|malentendants?|sourds?)\b", re.I)
 
 
 def language_of(path):
@@ -56,31 +73,16 @@ def decode(raw, lang=None):
     letters = [c for c in western if c.isalpha()]
     if sum("À" <= c <= "ÿ" for c in letters) <= 0.25 * len(letters):
         return western
-    try:
-        from charset_normalizer import from_bytes
-        best = from_bytes(raw).best()
-        if best is not None:
-            return str(best)
-    except ImportError:
-        pass
-    return raw.decode("cp1252", errors="replace")
+    best = from_bytes(raw).best()
+    return str(best) if best is not None else western
 
 
 def read_srt(path, lang=None):
-    """core.parse for any encoding. `lang` (e.g. 'fr') defaults to the tag in the file name."""
-    return core.parse_text(decode(open(path, "rb").read(), lang or language_of(path)))
-
-
-# Embedded tracks are tagged ISO 639-2 ("fre", "ger"), file names mostly ISO 639-1 ("fr", "de"):
-# both are brought to one key to tell whether a downloaded subtitle duplicates an embedded one.
-_SAME_LANGUAGE = ("en eng|fr fre fra|es spa|de ger deu|it ita|pt por|pt-br pob br|nl dut nld|sv swe|"
-                  "da dan|no nor nb nob|fi fin|pl pol|cs cze ces cz|sk slo slk|hu hun|ro rum ron|hr hrv|"
-                  "sl slv|sr srp|bs bos|bg bul|mk mac mkd|ru rus|uk ukr ua|be bel|el gre ell gr|tr tur|"
-                  "he heb|ar ara|fa per fas|hi hin|th tha|vi vie|id ind|ms may msa|ja jpn jp|ko kor|"
-                  "zh chi zho cn zh-cn zh-tw|ca cat|eu baq eus|gl glg|et est|lv lav|lt lit|is ice isl")
-LANGUAGE_KEY = {tag: g.split()[0] for g in _SAME_LANGUAGE.split("|") for tag in g.split()}
-HI_TAGS = {"hi", "sdh", "cc"}
-_HI_TITLE = re.compile(r"\b(sdh|hi|cc|hoh|deaf|hearing|malentendants?|sourds?)\b", re.I)
+    """The cues of an SRT file in any encoding (see decode). `lang` (e.g. 'fr') defaults to the
+    tag in the file name."""
+    with open(path, "rb") as f:
+        raw = f.read()
+    return core.parse_text(decode(raw, (lang or language_of(os.fspath(path)) or "").lower() or None))
 
 
 def language_key(tag):
@@ -95,13 +97,28 @@ def kind_of(path):
     return "forced" if "forced" in toks else "hi" if toks & HI_TAGS else "normal"
 
 
+def _run(cmd, path, timeout):
+    """Run ffprobe / ffmpeg on `path`; MediaError (with the end of its error output) when it is
+    missing, fails or takes more than `timeout` s."""
+    try:
+        r = subprocess.run(cmd, capture_output=True, encoding="utf-8", errors="replace", timeout=timeout)
+    except FileNotFoundError:
+        raise MediaError(f"{cmd[0]} not found: install ffmpeg") from None
+    except subprocess.TimeoutExpired:
+        raise MediaError(f"{cmd[0]} took more than {timeout} s on {path}") from None
+    if r.returncode:
+        tail = " | ".join(r.stderr.strip().splitlines()[-3:]) or f"exit status {r.returncode}"
+        raise MediaError(f"{cmd[0]} cannot read {path}: {tail}")
+    return r
+
+
 def probe_subtitles(video):
     """The subtitle tracks of `video`, as dicts: index, codec, text (readable as text), lang (a
     language_key), kind ('normal' / 'hi' / 'forced', from the disposition flags or the title), title."""
-    probe = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "s", "-show_entries",
-                            "stream=index,codec_name:stream_tags=language,title"
-                            ":stream_disposition=forced,hearing_impaired",
-                            "-of", "json", video], capture_output=True, text=True, timeout=300)
+    probe = _run(["ffprobe", "-v", "error", "-select_streams", "s", "-show_entries",
+                  "stream=index,codec_name:stream_tags=language,title"
+                  ":stream_disposition=forced,hearing_impaired",
+                  "-of", "json", video], video, 300)
     out = []
     for s in json.loads(probe.stdout or "{}").get("streams", []):
         tags, disp = s.get("tags", {}), s.get("disposition", {})
@@ -135,7 +152,7 @@ def embedded_references(video, workdir, streams=None, tracks=None):
     cmd = ["ffmpeg", "-nostdin", "-v", "error", "-y", "-i", video]
     for s in subs:
         cmd += ["-map", f"0:{s['index']}", "-f", "srt", os.path.join(workdir, f"{s['index']}.srt")]
-    subprocess.run(cmd, capture_output=True, timeout=1800)
+    _run(cmd, video, 1800)
     out = []
     for s in subs:
         p = os.path.join(workdir, f"{s['index']}.srt")
@@ -144,9 +161,9 @@ def embedded_references(video, workdir, streams=None, tracks=None):
     return out
 
 
-def best_reference(video, streams=None, tracks=None):
-    """The fullest embedded text subtitle of `video` as (cues, desc), or None.
-    Any language will do: an embedded track is assumed to be in sync with its video."""
+def best_reference(video, streams=None, tracks=None, min_cues=MIN_REF_CUES):
+    """The fullest embedded text subtitle of `video` with at least `min_cues` cues, as (cues, desc),
+    or None. Any language will do: an embedded track is assumed to be in sync with its video."""
     with tempfile.TemporaryDirectory() as wd:
-        refs = [r for r in embedded_references(video, wd, streams, tracks) if len(r[0]) >= MIN_REF_CUES]
+        refs = [r for r in embedded_references(video, wd, streams, tracks) if len(r[0]) >= min_cues]
     return max(refs, key=lambda r: len(r[0])) if refs else None

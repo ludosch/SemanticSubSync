@@ -46,18 +46,22 @@ left as they are unless you ask for a catch-up.
 
 | When | What |
 |---|---|
-| **Sync subtitles** in the "..." menu of a movie or an episode (administrators) | All its external `.srt` files, now, in any library; the result shows at the bottom of the screen |
+| **Sync subtitles** in the "..." menu of a movie or an episode (administrators) | All its external `.srt` files, now, in any library; the result shows at the bottom of the screen. Asking again while it runs follows the same sync |
 | A movie or an episode is added | Its external `.srt` files, about 30 s after the scan adds it |
 | Scheduled task **Re-time new subtitles** (every 30 min, Dashboard > Scheduled Tasks) | The `.srt` files added or changed since the last run, e.g. downloaded by Bazarr or by hand |
 
-- **Subtitles already there.** The first run of the task after the installation (or after a library
-  is created) records the subtitles already in each library and leaves them as they are. Tick
+- **Subtitles already there.** The first time the plugin sees a library (at its installation, or
+  when a library is created, before processing the videos its first scan adds), it records the
+  subtitles already in the library's folders and leaves them as they are. Tick
   *Also process the subtitles that were already there (catch-up)* to have the task process them
   too, at any time (on a large library and a small server, this can take hours).
 - **Leaving a library out.** Untick it on the plugin page: nothing in it is processed
   automatically; the menu entry still works there.
-- **One subtitle at a time**, at the lowest CPU priority, and **never while someone is watching**:
-  the automatic work waits for playback to end. The menu entry runs at once.
+- **One subtitle at a time**, at the lowest CPU priority. The automatic work **does not start a
+  subtitle while someone is watching** (a subtitle already started is finished): it waits for
+  playback to end. The menu entry runs at once.
+- **Failures.** A subtitle the engine fails on (error, or more than 30 minutes) is tried again by
+  the next runs, 3 times at most; then it is left alone until the file changes.
 - A subtitle belongs to a video when its name starts with the video's name
   (`Movie.fr.srt`, `Movie.fr.hi.srt` for `Movie.mkv`).
 - The decisions are those of the worker: corrected, in sync (nothing changes), unsure (left
@@ -77,7 +81,15 @@ Dashboard > Plugins > SemanticSubSync:
   back), or add the correction next to the download as `resync`, flagged so that Jellyfin plays it
   by default.
 - **Engine source** (advanced): a wheel path or URL to install instead of the release the plugin
-  was built for, e.g. `file:///config/semantic_subsync-0.12.0-py3-none-any.whl`.
+  was built for, e.g. `file:///config/semantic_subsync-0.12.0-py3-none-any.whl`. A
+  `semantic-subsync-0.12.0-constraints.txt` next to it pins the dependency versions; without
+  one, the latest compatible versions are installed.
+
+The official engine is installed with the dependency versions published with its release
+(`semantic-subsync-X.Y.Z-constraints.txt`); the installation fails rather than install other
+versions. An installation or an update is built aside and replaces the engine only once its
+model is ready and no subtitle is being processed: if it fails, the previous engine keeps
+working and the plugin page says why.
 
 ## Where things are
 
@@ -86,17 +98,30 @@ removes the engine, the model and the history.
 
 | Path | Content |
 |---|---|
-| `engine/` | uv, a standalone Python and the semantic-subsync package |
+| `engine/` | the semantic-subsync package in a virtual environment, and the dependency versions it was installed with (`constraints.txt`) |
+| `python/` | the standalone Python the engine runs on |
 | `models/` | the sentence model, at a fixed revision, checked against its SHA-256 |
 | `state/semsync.log` | one JSON line per decision |
 | `state/state.db` | the worker's record of each subtitle |
-| `seen.json` | size and date of each subtitle at its last run, to skip unchanged files quickly |
+| `seen.json` | size and date of each subtitle at its last run (or its failures), to skip unchanged files quickly |
+| `libraries.json` | the libraries whose existing subtitles were recorded |
+
+uv, used to install the engine, is deleted once the installation is done. Deleting `seen.json`
+is safe: the subtitles of every library are then recorded again as existing ones, not processed.
 
 The worker's `status` and `history` commands work on this folder:
 
 ```bash
 SEMSYNC_DIR=<plugin folder>/state <plugin folder>/engine/venv/bin/semantic-subsync-worker history TITLE S01E02
 ```
+
+## The menu entry
+
+The "Sync subtitles" entry is added by a script the plugin inserts into the web client's page as
+it is served. It relies on the web client's markup, tested with jellyfin-web 12.1; if a later
+version changes it, the entry may be missing (the browser console then says so), and the
+automatic processing is not affected. Apps that do not use the web client (TV and mobile apps
+with their own interface) do not show it.
 
 ## With Bazarr
 

@@ -1,16 +1,20 @@
 """Prepare a release: version, changelog, README download commands, commit and tag. Never pushes.
 
 Usage: uv run python tools/release.py X.Y.Z [--dry-run]
-       uv run python tools/release.py --check-notes X.Y.Z    (CI: the changelog has notes for X.Y.Z)
+       uv run python tools/release.py --notes X.Y.Z    (CI: prints the changelog notes of X.Y.Z,
+                                                        fails when there are none; alias --check-notes)
 
 Checks first: branch main, clean tree, in step with origin/main, last "tests" run green for HEAD,
 something under [Unreleased], X.Y.Z above the current version. Then:
   - __version__ in src/semantic_subsync/__init__.py (the only place: pyproject reads it);
   - CHANGELOG.md: the [Unreleased] entries move under "## [X.Y.Z] - <today>", [Unreleased] is
     left empty above it;
-  - README.md and README.fr.md: the version in the `gh release download` / `docker load` example;
-  - the Jellyfin plugin: its version (X.Y.Z.0) and the engine release it installs (X.Y.Z);
-  - unit tests, then a commit "Release vX.Y.Z" and an annotated tag vX.Y.Z.
+  - README.md and README.fr.md: the version in the `pip install ...@vX.Y.Z` command and in the
+    `gh release download` / `docker load` example;
+  - the Jellyfin plugin: its version (X.Y.Z.0, in Directory.Build.props) and the
+    engine release it installs (X.Y.Z);
+  - unit tests on the bumped files (on failure every file is restored), then a commit
+    "Release vX.Y.Z" and an annotated tag vX.Y.Z.
 The push (which starts the release workflow) is printed, to run after a last look.
 """
 import datetime, difflib, json, re, subprocess, sys
@@ -21,7 +25,8 @@ INIT = ROOT / "src/semantic_subsync/__init__.py"
 CHANGELOG = ROOT / "CHANGELOG.md"
 READMES = [ROOT / "README.md", ROOT / "README.fr.md"]
 PLUGIN = ROOT / "integrations/jellyfin"
-PLUGIN_FILES = [PLUGIN / "Directory.Build.props", PLUGIN / "Jellyfin.Plugin.SemanticSubSync/Engine/EngineInstaller.cs"]
+PLUGIN_FILES = [PLUGIN / "Directory.Build.props",
+                PLUGIN / "Jellyfin.Plugin.SemanticSubSync/Engine/EngineInstaller.cs"]
 VERSION = re.compile(r'^__version__ = "([^"]+)"$', re.M)
 SEMVER = re.compile(r"^\d+\.\d+\.\d+$")
 
@@ -44,15 +49,18 @@ def promote(text, version, date):
 
 
 def bump_readme(text, version):
-    """The version in the release download example (gh release download vX.Y.Z,
-    semantic-subsync-X.Y.Z-docker-....tar.gz)."""
+    """The release in the install commands (pip install "...@ git+https://.../SemanticSubSync@vX.Y.Z",
+    gh release download vX.Y.Z, semantic-subsync-X.Y.Z-docker-....tar.gz)."""
+    text = re.sub(r"(git\+https://github\.com/ludosch/SemanticSubSync@v)\d+\.\d+\.\d+", rf"\g<1>{version}", text)
     text = re.sub(r"(gh release download v)\d+\.\d+\.\d+", rf"\g<1>{version}", text)
     return re.sub(r"(semantic-subsync-)\d+\.\d+\.\d+(-docker-)", rf"\g<1>{version}\g<2>", text)
 
 
 def bump_plugin(text, version):
-    """The Jellyfin plugin's version (X.Y.Z.0) and the engine release it installs (EngineVersion X.Y.Z)."""
+    """The Jellyfin plugin's version (X.Y.Z.0: the .props elements; `version:` too, should
+    build.yaml carry one again) and the engine release it installs (EngineVersion X.Y.Z)."""
     text = re.sub(r"(<(?:Assembly|File)?Version>)\d+\.\d+\.\d+\.\d+(</)", rf"\g<1>{version}.0\g<2>", text)
+    text = re.sub(r'^(version: ")\d+\.\d+\.\d+\.\d+(")', rf"\g<1>{version}.0\g<2>", text, flags=re.M)
     return re.sub(r'(EngineVersion = ")\d+\.\d+\.\d+(")', rf"\g<1>{version}\g<2>", text)
 
 
@@ -84,17 +92,45 @@ def preflight(version, current):
     git("fetch", "-q", "origin", "main")
     if git("rev-parse", "HEAD") != git("rev-parse", "origin/main"):
         problems.append("HEAD differs from origin/main (push or pull first)")
-    head = git("rev-parse", "HEAD")
-    runs = subprocess.run(["gh", "run", "list", "--workflow", "tests", "--commit", head, "--json", "status,conclusion",
-                           "-L", "1"], cwd=ROOT, capture_output=True, text=True)
-    run = (json.loads(runs.stdout or "[]") or [{}])[0]
-    if run.get("conclusion") != "success":
-        problems.append(f"no green 'tests' run for HEAD ({run.get('status') or 'none'} {run.get('conclusion') or ''})".rstrip())
+    problem = ci_problem(git("rev-parse", "HEAD"))
+    if problem:
+        problems.append(problem)
     return problems
 
 
+def ci_problem(head, run=subprocess.run):
+    """None when the last 'tests' run of commit `head` is green, else what is wrong. tests.yml
+    runs on every push to main (documentation-only changes included, with its jobs skipped), so
+    every pushed HEAD has a run. `run` is subprocess.run (replaced in the tests)."""
+    try:
+        p = run(["gh", "run", "list", "--workflow", "tests", "--commit", head, "--json", "status,conclusion", "-L", "1"],
+                cwd=ROOT, capture_output=True, text=True)
+    except FileNotFoundError:
+        return "gh (GitHub CLI) not found: install it and run `gh auth login`"
+    if p.returncode != 0:
+        return f"gh run list failed: {(p.stderr or p.stdout).strip()}"
+    last = (json.loads(p.stdout or "[]") or [{}])[0]
+    if last.get("conclusion") != "success":
+        return f"no green 'tests' run for HEAD ({last.get('status') or 'none'} {last.get('conclusion') or ''})".rstrip()
+    return None
+
+
+def write_and_test(changes, test=None):
+    """Write the new contents, then run the unit tests on them. If the tests fail (or anything
+    else goes wrong), every file gets its previous content back, so the tree stays clean."""
+    old = {path: path.read_bytes() for path in changes}
+    try:
+        for path, new in changes.items():
+            path.write_bytes(new.encode("utf-8"))
+        (test or (lambda: subprocess.run([sys.executable, "-m", "pytest", "-q"], cwd=ROOT, check=True)))()
+    except BaseException:
+        for path, content in old.items():
+            path.write_bytes(content)
+        raise
+
+
 def main(argv):
-    if argv[:1] == ["--check-notes"] and len(argv) == 2:
+    if argv[:1] in (["--notes"], ["--check-notes"]) and len(argv) == 2:
         return check_notes(argv[1])
     dry = "--dry-run" in argv
     args = [a for a in argv if a != "--dry-run"]
@@ -119,9 +155,10 @@ def main(argv):
                                                    str(path.relative_to(ROOT)), str(path.relative_to(ROOT))))
     if dry:
         return
-    for path, new in changes.items():
-        path.write_bytes(new.encode("utf-8"))
-    subprocess.run(["uv", "run", "pytest", "-q"], cwd=ROOT, check=True)
+    try:
+        write_and_test(changes)
+    except subprocess.CalledProcessError:
+        raise SystemExit("Not released: the unit tests failed on the bumped files (every file was restored).")
     git("add", *(str(p.relative_to(ROOT)) for p in changes))
     git("commit", "-q", "-m", f"Release v{version}")
     git("tag", "-a", f"v{version}", "-m", f"v{version}")

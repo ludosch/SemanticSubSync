@@ -38,6 +38,10 @@ When Bazarr downloads a new subtitle over a corrected one (an upgrade, a manual 
 new file is checked again and the old `.replaced` file is replaced or removed. When a subtitle
 needs no correction (any more), it keeps its name and no extra file is left.
 
+A downloaded subtitle is never deleted: a file whose content the worker cannot account for
+(see [State](#state)) is renamed `<name>.<date>.bak` instead of being overwritten or removed.
+Players and the worker ignore these files; delete them once checked.
+
 ## What is checked
 
 - Each downloaded subtitle on its own: a video with `fr`, `fr.hi` and `en` subtitles gets three
@@ -76,8 +80,9 @@ In **Settings → Subtitles**:
   `python3` available inside the Bazarr container. Bazarr runs the command without a shell and
   passes each `{{variable}}` as one argument, so paths with spaces are safe.
 - **Post-processing thresholds** (series and movies): `100` checks every subtitle except perfect
-  matches. Lower it to check only the poorer ones. The score is a poor guide to sync: on the
-  files tested, subtitles at 69 % were in sync while one at 94 % was off by 44 s.
+  matches. Lower it to check only the poorer ones. The score is a poor guide to sync: it
+  measures how closely the subtitle's release name matches the video's, not its timing, so a
+  high score can still be off and a low one in sync.
 - **Automatic subtitles synchronization** (Bazarr's own ffsubsync): turn it off, so that the
   downloaded file stays as published and the worker compares it with the original.
 
@@ -90,30 +95,36 @@ services:
   semantic-subsync:
     build: https://github.com/ludosch/SemanticSubSync.git
     container_name: semantic-subsync
-    user: "1000:1000"             # same owner as your media files
-    environment:
-      - SEMSYNC_DIR=/data/.semsync
-      - SEMSYNC_MODEL_DIR=/models      # local model copies (see below)
-      - HF_HOME=/models/hf             # a model without a local copy is downloaded here on first use
-      - FASTEMBED_CACHE_PATH=/models/hf
+    user: "1000:1000"             # uid:gid owning your media files (the image's default user is 1000:1000)
     volumes:
       - /path/to/data:/data          # same mount as in the Bazarr container
-      - ./models:/models
+      - ./models:/models             # models, kept when the container is recreated
     mem_limit: 1536m
     restart: unless-stopped
 ```
 
-The default model (`static`) is downloaded on first use (about 220 MB). To run offline, put its
+The worker runs as an unprivileged user. It must be able to write the subtitle folders and
+`/data/.semsync`, so `user:` should be the owner of your media files (`id -u` / `id -g` of that
+account); `./models` must be writable by it too.
+
+The default model (`static`) is downloaded into `/models` on first use (about 220 MB). To run offline, put its
 `0_StaticEmbedding/tokenizer.json` and `onnx/model_fp16.onnx` (or the larger
 `0_StaticEmbedding/model.safetensors`) in `./models/static`. If you also want `minilm` on a small CPU, make its int8 copy once with
 [`tools/quantize_model.py`](../../tools/quantize_model.py) into `./models/minilm`.
 
 | Variable | Default | |
 |---|---|---|
+| `SEMSYNC_DIR` | `/data/.semsync` | Exchange folder: `queue/`, `failed/`, `state.db`, `semsync.log` |
+| `SEMSYNC_MODEL_DIR` | `/models` | Local model copies (`<folder>/static`, `<folder>/minilm`); a model without one is downloaded into `<folder>/hf` |
 | `SEMSYNC_MODEL` | `static` | Sentence model: `static` or `minilm` (see [Models](../../docs/models.md)) |
 | `SEMSYNC_OUTPUT` | `replace` | `replace`: the correction takes the subtitle's name, the download is kept as `.replaced`. `side`: the download is left as is, the correction is written as `.resync` |
 | `SEMSYNC_EXTRA_LINES` | `drop` | Lines the video has no room for (a translator credit, a recap or a scene that your video lacks) are removed. `keep` leaves them where nothing is shown nor said, a block of consecutive lines whole or not at all |
 | `SEMSYNC_LOG_MAX_MB` | `10` | Size limit of the log; its oldest entries are deleted beyond it (see [Logs](#logs)). `0`: no limit |
+| `SEMSYNC_MEDIA_ROOT` | (none) | Queued jobs whose video or subtitle lies outside this folder (several: separated by `:`) are skipped. Empty: no restriction |
+
+A wrong value (an unknown output mode, model or extra-lines setting, a size that is not a
+number) stops the worker at start with a message saying which variable, instead of acting as
+another value.
 
 The worker runs at the lowest CPU priority (`nice 19`), so a media server transcoding at the
 same time keeps priority. It unloads the model when the queue is empty.
@@ -131,7 +142,10 @@ docker exec semantic-subsync semantic-subsync-worker backfill /data/media
 ## Logs
 
 `/data/.semsync/semsync.log` is the history of every decision: one JSON line per job, plus one
-when the worker starts (version, output mode, settings, model).
+when the worker starts (version, output mode, settings, model) and one when the queue is empty
+again (how many jobs, per status). `unchanged` jobs are only counted there, not logged one by
+one, so that re-runs and backfills do not push real history out of the log. The container's
+output (`docker logs`) has one line per job, without tracebacks.
 
 Each job line holds:
 
@@ -150,9 +164,10 @@ Each job line holds:
 | `unsure` | Too few lines match the embedded track (wrong reference, other cut): the file is left alone |
 | `no_reference` | No embedded text subtitle with at least 20 lines |
 | `redundant` | The video embeds a text subtitle of the same language and kind |
-| `unchanged` | Already processed, nothing changed since |
-| `skipped` | Missing file, not an `.srt`, or one of the worker's own files (`.replaced`, `.resync`) |
-| `error` | Unexpected failure, with the end of the traceback; the job is moved to `/data/.semsync/failed` |
+| `unchanged` | Already processed, nothing changed since (container output only) |
+| `changed_during_run` | Bazarr wrote a new subtitle while this one was processed: nothing is written, the new file is checked as its own job |
+| `skipped` | Missing file, not an `.srt`, one of the worker's own files (`.replaced`, `.resync`), or outside `SEMSYNC_MEDIA_ROOT` |
+| `error` | Unexpected failure, with the end of the traceback (log file only); the job is moved to `/data/.semsync/failed` |
 
 Everything logged about one episode or movie, oldest first, in a readable form. A path must
 contain every word given, so add a word of the title to an episode number (`S01E02` alone would
@@ -188,7 +203,13 @@ synced download (`input_sha256`, `input_size`); the output (`output_mode`, `outp
 `output_sha256`, `replaced_path`); the video's size and date; the engine version and settings;
 `origin`, `score`, `secs`, `processed_at` and `runs`.
 
-Deleting the file only makes the worker check everything again.
+The worker records what it is about to write before it touches any file, so a container
+stopped in the middle of a job is recognised and completed on the next run.
+
+Without `state.db` (deleted, or a new exchange folder), the worker can no longer tell its own
+corrections from new downloads. It then checks everything again, takes an existing `.replaced`
+file as the download, and keeps anything it cannot account for as a `.bak` file rather than
+deleting it. Keep `state.db` with your backups.
 
 ## Test one pair by hand
 

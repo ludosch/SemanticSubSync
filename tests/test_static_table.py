@@ -88,3 +88,61 @@ def test_download_checks_the_sha256_and_keeps_only_verified_files(tmp_path, monk
     with pytest.raises(ValueError, match="SHA-256"):
         core._download(m, "onnx/u.onnx")
     assert os.listdir(os.path.dirname(path)) == ["t.onnx"]                       # nothing left of the bad one
+
+
+def test_truncated_onnx_file_is_a_clear_error(tmp_path):
+    onnx_file(tmp_path / "m.onnx", np.arange(24, dtype=np.float16).reshape(4, 6))
+    whole = (tmp_path / "m.onnx").read_bytes()
+    (tmp_path / "cut.onnx").write_bytes(whole[:len(whole) // 2])
+    with pytest.raises(ValueError, match="truncated"):
+        core._onnx_table(str(tmp_path / "cut.onnx"))
+
+
+def test_safetensors_table_of_another_dtype_is_refused(tmp_path):
+    head = json.dumps({"embedding.weight": {"dtype": "F16", "shape": [2, 2], "data_offsets": [0, 8]}}).encode()
+    (tmp_path / "m.safetensors").write_bytes(len(head).to_bytes(8, "little") + head + bytes(8))
+    with pytest.raises(ValueError, match="F16"):
+        core._safetensors_table(str(tmp_path / "m.safetensors"))
+
+
+# ---------- embedding caches ----------
+
+@pytest.fixture
+def counting_model(monkeypatch):
+    """The static model replaced by a counter of loads: (model_dir) per load."""
+    loads = []
+    def load(m, d):
+        loads.append(d)
+        return lambda texts: np.array([[len(t), 1.0, 2.0] for t in texts], np.float32)
+    monkeypatch.setattr(core, "_load_static", load)
+    monkeypatch.delenv("SEMSYNC_MODEL_DIR", raising=False); monkeypatch.delenv("SEMSYNC_CACHE", raising=False)
+    core.unload()
+    yield loads
+    core.unload()
+
+
+def test_models_are_kept_per_model_dir(counting_model, tmp_path, monkeypatch):
+    core.embed(["a"], "static")
+    (tmp_path / "static").mkdir()
+    monkeypatch.setenv("SEMSYNC_MODEL_DIR", str(tmp_path))
+    core.embed(["a"], "static")
+    assert counting_model == [None, str(tmp_path / "static")]
+
+
+def test_memory_cache_is_bounded_and_unload_frees_it(counting_model):
+    for n in range(core.CACHE_SIZE + 5):
+        core.embed([f"text {n}"], "static")
+    assert len(core._cache) == core.CACHE_SIZE
+    assert core.unload() is True and not core._models and not core._cache
+    assert core.unload() is False
+
+
+def test_unreadable_disk_cache_is_a_miss(counting_model, tmp_path, monkeypatch):
+    monkeypatch.setenv("SEMSYNC_CACHE", str(tmp_path / "emb"))
+    v = core.embed(["hello"], "static").copy()
+    (f,) = (tmp_path / "emb").iterdir()
+    assert f.suffix == ".npy"                                    # written whole, no temporary left
+    f.write_bytes(f.read_bytes()[:20])                           # a write cut short (old versions)
+    core._cache.clear()
+    assert np.array_equal(core.embed(["hello"], "static"), v)
+    assert np.array_equal(np.load(f), v)                         # and repaired

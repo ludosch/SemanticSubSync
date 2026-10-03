@@ -18,6 +18,7 @@ public sealed class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<EngineInstaller>();
         serviceCollection.AddSingleton<EngineRunner>();
         serviceCollection.AddSingleton<SyncService>();
+        serviceCollection.AddSingleton<Api.SyncJobs>();
         serviceCollection.AddSingleton<IScheduledTask, SyncNewSubtitlesTask>();
         serviceCollection.AddHostedService<NewVideoListener>();
         serviceCollection.AddHostedService<EngineWarmup>();

@@ -6,8 +6,10 @@
 
 - Python 3.11 or later, on 64-bit Linux, macOS or Windows.
 - ffmpeg / ffprobe, only when the reference is a video.
-- ARM64 (Raspberry Pi class hardware) is covered by the CI: tests, both models, the example
-  and the Docker image run on an ARM64 machine, with the same results as on x86-64.
+- What the CI checks on every code change: on Linux x86-64 and ARM64 (Raspberry Pi class
+  hardware), the unit tests, both models and the lighthouse example (100 % of lines in sync,
+  and the wrong reference left alone, on both); on Windows and macOS, the unit tests only. The
+  Docker image is built and checked for amd64 and arm64 at each release.
 - A Raspberry Pi needs a 64-bit OS: the ONNX runtime has no 32-bit ARM build.
 
 The install commands and the Docker image are in the [README](../README.md#command-line).
@@ -52,11 +54,13 @@ Files that are not UTF-8 (most older downloads) are read in the code page of the
 ## From Python
 
 ```python
-from semantic_subsync import core, media
+from semantic_subsync import read_srt, resync, write
 
-status, cues, stats = core.resync(media.read_srt("Movie.fr.srt"), core.parse("Movie.en.srt"))
+# read_srt reads any encoding (see Encodings above), with the language taken from the file
+# name or given: read_srt(path, "ru")
+status, cues, stats = resync(read_srt("Movie.fr.srt"), read_srt("Movie.en.srt"))
 if status == "corrected":
-    core.write("Movie.fr.synced.srt", cues)
+    write("Movie.fr.synced.srt", cues)
 ```
 
 ## Integrations

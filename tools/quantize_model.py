@@ -35,9 +35,25 @@ def to_fp32(model):
     return model
 
 
-def main(out):
+def source_files():
+    """The folder of the model files fastembed uses for minilm, and the name of its ONNX file.
+    fastembed's public model list gives the Hugging Face repository it downloads from;
+    huggingface_hub downloads it (or finds it in its cache)."""
     from fastembed import TextEmbedding
-    src = str(TextEmbedding(MODELS["minilm"]["repo"]).model._model_dir)    # downloads the FP16 model if needed
+    from huggingface_hub import snapshot_download
+    name = MODELS["minilm"]["repo"]
+    desc = next((m for m in TextEmbedding.list_supported_models() if m["model"] == name), None)
+    repo = desc and (desc.get("sources") or {}).get("hf")
+    if not repo:
+        sys.exit(f"fastembed no longer lists a Hugging Face source for {name}: "
+                 f"this script needs updating for the installed fastembed version")
+    return snapshot_download(repo), desc.get("model_file") or ONNX
+
+
+def main(out):
+    src, onnx_file = source_files()
+    if onnx_file != ONNX:
+        sys.exit(f"fastembed's minilm file is {onnx_file}, expected {ONNX}: update this script")
     os.makedirs(out, exist_ok=True)
     for f in os.listdir(src):                      # tokenizer and config files, as is
         if f != ONNX and os.path.isfile(os.path.join(src, f)):

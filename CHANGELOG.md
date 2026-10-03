@@ -8,6 +8,59 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 - Jellyfin plugin: a logo in the plugin catalog.
+- Each release carries `semantic-subsync-X.Y.Z-constraints.txt`: every dependency of the engine,
+  pinned as tested. The Jellyfin plugin installs the engine with it.
+- Worker: `SEMSYNC_MEDIA_ROOT`, the folders queued jobs must be in (default: anywhere).
+- `semantic_subsync.read_srt` (any encoding), `core.similarity`, and `core.unload()` to free the
+  models and the embedding cache.
+
+### Changed
+- `pip install semantic-subsync` runs the default `static` model; the `static` extra is no longer
+  needed (kept, empty), `model` adds the `minilm` runtime.
+- The README's `pip install` command installs the latest release instead of the development
+  branch.
+- Engine settings are checked: `core.P` is read-only, `core.params()` and the worker's `SEMSYNC_*`
+  variables reject unknown or invalid values with a clear message.
+- Worker: `unchanged` jobs are no longer logged one by one (one summary line per batch);
+  tracebacks go to the log file only.
+- Docker image: runs as uid/gid 1000, with default `SEMSYNC_DIR` and `/models` paths, and installs
+  dependencies pinned with hashes.
+- Jellyfin plugin: an engine update is built aside and replaces the engine only once it works; a
+  failed update keeps the previous one.
+- Jellyfin plugin: "Sync subtitles" shows only in the item's own menu and closes it cleanly; a
+  second click follows the sync already running; syncs stop when Jellyfin stops.
+
+### Fixed
+- Worker: a downloaded subtitle is never deleted. After `state.db` is lost the `.replaced` file is
+  taken as the download, and a file it cannot account for is kept aside as `.bak`.
+- Worker: a job interrupted at any point (container stopped, power cut) is completed by the next
+  run instead of taking its own correction for a new download.
+- Worker: a subtitle replaced by Bazarr while it is being processed is left alone
+  (`changed_during_run`) and processed as a new file.
+- Worker: a `state.db` from 0.10 works again (`refused` reads as `unsure`); `backfill` no longer
+  overwrites queued jobs and pairs a subtitle with the longest matching video name; titles that
+  contain "replaced" or "resync" are processed; a broken job file no longer stops the queue.
+- Command line: a crash (ffmpeg missing, failed model download, bad `SEMSYNC_MODEL`) exits with
+  status 2 and one message, not a traceback with status 1 ("unsure").
+- A corrupt or unreadable video is reported as an ffprobe/ffmpeg error, not as "no usable embedded
+  text subtitle".
+- Timings with a short fraction (`00:00:01,5`) or without hours (`01:02.500`) are read correctly.
+- An `.ass` or `.vtt` file, `--track` with an `.srt` reference, or `-o` pointing at the reference is
+  refused with a clear message; an explicit `--track` is used even when short.
+- Lines at a cut are placed correctly next to a long reference line or a cue sharing a start time.
+- Output subtitles and the embedding cache are written atomically, with the same line ends on
+  every platform.
+- Jellyfin plugin: the first scan of a new library no longer processes the subtitles already in
+  it when catch-up is off.
+- Jellyfin plugin: a subtitle that takes over 30 minutes is stopped and retried at most 3 times
+  until the file changes, instead of stopping the run; an unavailable engine is retried an hour
+  later instead of in a loop.
+- Jellyfin plugin: a damaged history file no longer makes every existing subtitle processed;
+  deleted subtitles are forgotten.
+- Jellyfin plugin: the settings page no longer risks saving every library unticked while it
+  loads, and reports load and save errors.
+- Releases: the GitHub release is published, and becomes the one Jellyfin reads, only once every
+  file is attached; a failed release run can be re-run.
 
 ## [0.12.0] - 2026-10-03
 

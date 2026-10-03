@@ -62,3 +62,27 @@ def test_fmt(t, expected):
 ])
 def test_clean(raw, expected):
     assert core.clean(raw) == expected
+
+
+@pytest.mark.parametrize("timing,start,end", [
+    ("00:00:01,5 --> 00:00:02,25", 1.5, 2.25),           # fraction of 1 or 2 digits: tenths, hundredths
+    ("00:00:01,5000 --> 00:00:02,0001", 1.5, 2.0001),
+    ("01:02.500 --> 01:04.000", 62.5, 64.0),             # no hours
+    ("1:00:00,000 --> 1:00:01,000", 3600.0, 3601.0),
+])
+def test_parse_timing_variants(timing, start, end):
+    assert core.parse_text(f"1\n{timing}\nText\n") == [[start, end, "Text"]]
+
+
+def test_parse_reads_any_encoding(tmp_path):
+    p = tmp_path / "Movie.ru.srt"
+    p.write_bytes("1\r\n00:00:01,000 --> 00:00:02,000\r\nПривет, как дела?\r\n".encode("cp1251"))
+    assert core.parse(p)[0][2] == "Привет, как дела?"
+
+
+def test_write_is_atomic_with_unix_line_ends(tmp_path):
+    p = tmp_path / "a.srt"
+    p.write_text("old content", encoding="utf-8")
+    core.write(p, [[1.0, 2.0, "A"]])
+    assert p.read_bytes() == b"1\n00:00:01,000 --> 00:00:02,000\nA\n\n"
+    assert [f.name for f in tmp_path.iterdir()] == ["a.srt"]

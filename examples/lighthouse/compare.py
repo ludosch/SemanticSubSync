@@ -32,16 +32,25 @@ def tools():
     return found
 
 
-def score(path, truth_path, downloaded):
-    out = media.read_srt(path)
-    if not os.path.exists(truth_path):
-        moved = max(abs(a[0] - b[0]) for a, b in zip(out, downloaded))
-        return f"changed the file (lines moved by up to {moved:.0f} s)" if moved > 0.01 else "left unchanged"
+def accuracy(path, truth_path):
+    """(share of scored lines within 300 ms of their true start, worst error in s). Lines are
+    found in the truth by their text; a file with no line in the truth scores (0.0, inf)."""
     truth = {}
     for s, _, x in media.read_srt(truth_path):
         truth.setdefault(x, []).append(s)
-    err = [abs(s - truth[x].pop(0)) for s, _, x in out if truth.get(x)]
-    return f"{100 * sum(e <= 0.3 for e in err) / len(err):5.1f} % within 300 ms, worst {max(err):5.1f} s"
+    err = [abs(s - truth[x].pop(0)) for s, _, x in media.read_srt(path) if truth.get(x)]
+    if not err:
+        return 0.0, float("inf")
+    return sum(e <= 0.3 for e in err) / len(err), max(err)
+
+
+def score(path, truth_path, downloaded):
+    if not os.path.exists(truth_path):
+        out = media.read_srt(path)
+        moved = max((abs(a[0] - b[0]) for a, b in zip(out, downloaded)), default=0.0)
+        return f"changed the file (lines moved by up to {moved:.0f} s)" if moved > 0.01 else "left unchanged"
+    share, worst = accuracy(path, truth_path)
+    return f"{100 * share:5.1f} % within 300 ms, worst {worst:5.1f} s"
 
 
 def main():

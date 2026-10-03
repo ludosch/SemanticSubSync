@@ -18,6 +18,8 @@ $SEMSYNC_DIR/queue (see integrations/bazarr/enqueue.py for Bazarr). For each job
                         subtitle's correction gets no "default" flag).
      When no correction is needed (any more), the downloaded subtitle gets its name back and the
      extra file is removed.
+A downloaded subtitle is never deleted: a file the state does not account for (state.db lost,
+a file edited by hand) is renamed '<name>.<time>.bak' instead of being overwritten or removed.
 The sentence model is SEMSYNC_MODEL (static by default, or minilm). A model chosen by hand for one
 subtitle (`one --model`) is kept in state.db and used again for that subtitle on later runs, until
 another choice (`--model default` goes back to SEMSYNC_MODEL).
@@ -33,55 +35,141 @@ Usage: semantic-subsync-worker run                          process the queue fo
        semantic-subsync-worker prepare                      download and load the sentence model (SEMSYNC_MODEL) now,
                                                             so the first subtitle does not wait for it
 """
-import gc, json, os, sys, time, traceback
+import argparse, contextlib, json, os, shutil, sys, tempfile, time, traceback
+try:
+    import fcntl
+except ImportError:                 # Windows: the log is written without a lock
+    fcntl = None
 from semantic_subsync import __version__, core, media
 from semantic_subsync.state import FIELDS, State, sha256, video_stamp
 
 BASE = os.environ.get("SEMSYNC_DIR", "/data/.semsync")
 QUEUE, FAILED = f"{BASE}/queue", f"{BASE}/failed"
 LOG = f"{BASE}/semsync.log"
+
+
+def _megabytes(value):
+    try:
+        return int(float(value) * 1024 * 1024)
+    except ValueError:
+        return None                 # reported by check_settings
+
+
 # the log is the history of every decision; past this size its oldest entries are deleted
-LOG_MAX_BYTES = int(float(os.environ.get("SEMSYNC_LOG_MAX_MB", "10")) * 1024 * 1024)
+LOG_MAX_BYTES = _megabytes(os.environ.get("SEMSYNC_LOG_MAX_MB", "10"))
 DB = f"{BASE}/state.db"
 POLL = 30
 OUTPUT = os.environ.get("SEMSYNC_OUTPUT", "replace")        # "replace" or "side"
 # lines the video has no room for (a credit, a recap or a scene it lacks): "drop" or "keep"
 EXTRA_LINES = os.environ.get("SEMSYNC_EXTRA_LINES", core.P["extra_lines"])
+# queued jobs whose video or subtitle lies outside these folders (os.pathsep-separated) are
+# skipped; empty: no restriction
+MEDIA_ROOT = os.environ.get("SEMSYNC_MEDIA_ROOT", "")
 REPLACED, RESYNC = "replaced", "resync"
 OWN_TAGS = (REPLACED, RESYNC)
+# what follows a subtitle's title in its name: language codes and Jellyfin's flags
+FLAG_TAGS = {"forced", "foreign", "default"} | media.HI_TAGS
+CHANGED = "changed_during_run"      # the subtitle was replaced while it was being processed
 
 
-def log(rec):
+def check_settings():
+    """The settings read from the environment, checked before any job: a typo stops the worker
+    with a clear message instead of acting as another value or failing on every job."""
+    errors = []
+    if OUTPUT not in ("replace", "side"):
+        errors.append(f"SEMSYNC_OUTPUT={OUTPUT!r}: choose replace or side")
+    if EXTRA_LINES not in ("drop", "keep"):
+        errors.append(f"SEMSYNC_EXTRA_LINES={EXTRA_LINES!r}: choose drop or keep")
+    if core.DEFAULT_MODEL not in core.MODELS:
+        errors.append(f"SEMSYNC_MODEL={core.DEFAULT_MODEL!r}: choose one of {', '.join(core.MODELS)}")
+    if LOG_MAX_BYTES is None or LOG_MAX_BYTES < 0:
+        errors.append(f"SEMSYNC_LOG_MAX_MB={os.environ.get('SEMSYNC_LOG_MAX_MB')!r}: a size in MB, 0 for no limit")
+    for root in filter(None, MEDIA_ROOT.split(os.pathsep)):
+        if not os.path.isdir(root):
+            errors.append(f"SEMSYNC_MEDIA_ROOT: {root!r} is not a folder")
+    if errors:
+        sys.exit("semantic-subsync-worker: " + "; ".join(errors))
+
+
+# --- log ---------------------------------------------------------------------------------------
+
+def log(rec, keep=True, detail=None):
+    """One JSON line on stdout per decision (the Jellyfin plugin reads the last one). When `keep`,
+    it is also added to the log file, with `detail` (e.g. a traceback) that stdout does not repeat."""
     rec = {"ts": time.strftime("%Y-%m-%d %H:%M:%S"), **rec}
-    line = json.dumps(rec, ensure_ascii=False)
-    print(line, flush=True)
-    with open(LOG, "a", encoding="utf-8") as f:
-        f.write(line + "\n")
-    trim_log()
+    print(json.dumps(rec, ensure_ascii=False), flush=True)
+    if keep:
+        with _log_lock():
+            with open(LOG, "a", encoding="utf-8") as f:
+                f.write(json.dumps({**rec, **(detail or {})}, ensure_ascii=False) + "\n")
+            _trim(LOG_MAX_BYTES)
+    return rec
+
+
+@contextlib.contextmanager
+def _log_lock():
+    """The queue worker, `one` and `backfill` may write the log at the same time: a line must not
+    be appended to a copy being trimmed. Without fcntl (Windows) there is no lock."""
+    if fcntl is None:
+        yield
+        return
+    with open(LOG + ".lock", "a") as f:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(f, fcntl.LOCK_UN)
 
 
 def trim_log(max_bytes=None):
     """Past SEMSYNC_LOG_MAX_MB, delete the oldest entries: the newest half of the limit is kept,
     cut at a line boundary. No archive copy is made. 0 = no limit."""
-    max_bytes = LOG_MAX_BYTES if max_bytes is None else max_bytes
+    with _log_lock():
+        _trim(LOG_MAX_BYTES if max_bytes is None else max_bytes)
+
+
+def _trim(max_bytes):
     if not max_bytes or os.path.getsize(LOG) <= max_bytes:
         return
     with open(LOG, "rb") as f:
         f.seek(-(max_bytes // 2), os.SEEK_END)
         f.readline()                                   # the first line read is a partial one
         kept = f.read()
-    with open(LOG + ".tmp", "wb") as f:
-        f.write(kept)
-    os.replace(LOG + ".tmp", LOG)
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(LOG) or ".", prefix=".semsync.log.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(kept)
+        os.replace(tmp, LOG)
+    finally:
+        _remove(tmp)
+
+
+# --- names, as Jellyfin reads them -------------------------------------------------------------
+
+def _is_tag(word):
+    word = word.lower()
+    return word in FLAG_TAGS or word in media.LANGUAGE_KEY or word in media.CODEPAGE
+
+
+def _title_end(words):
+    """Index of the first of the trailing language / flag words of a name split on dots."""
+    i = len(words)
+    while i > 1 and _is_tag(words[i - 1]):
+        i -= 1
+    return i
 
 
 def tagged_path(video, sub, tag):
     """'Show - S01E01.fr.hi.srt' -> 'Show - S01E01.<tag>.fr.hi.srt'. Jellyfin reads what follows
-    the video's name: the language and hi/forced flags, the other words being the track title."""
+    the video's name: the language and hi/forced flags, the other words being the track title.
+    A subtitle not named after its video gets the tag before its language and flags as well."""
     stem = os.path.splitext(video)[0]
     if sub.startswith(stem + "."):
         return stem + f".{tag}" + sub[len(stem):]
-    return os.path.splitext(sub)[0] + f".{tag}.srt"
+    name = os.path.basename(sub)
+    words = os.path.splitext(name)[0].split(".")
+    i = _title_end(words)
+    return sub[:len(sub) - len(name)] + ".".join(words[:i] + [tag] + words[i:]) + ".srt"
 
 
 def side_path(video, sub):
@@ -95,10 +183,18 @@ def side_path(video, sub):
     return os.path.splitext(path)[0] + ".default.srt"
 
 
-def is_own(path):
-    """A file this worker wrote (or kept aside): never a job of its own."""
-    toks = os.path.basename(path).lower().split(".")
-    return any(t in toks[1:-1] for t in OWN_TAGS)
+def is_own(path, video=None):
+    """A file this worker wrote (or kept aside): never a job of its own. Only the words after the
+    video's name count ('The.Replaced.2024.fr.srt' is a download); without the video, the word
+    before the language and flags, or the last word (names written by earlier versions)."""
+    name = os.path.basename(path).lower()
+    if video:
+        stem = os.path.basename(os.path.splitext(video)[0]).lower()
+        if name.startswith(stem + "."):
+            return any(t in OWN_TAGS for t in name[len(stem):].split(".")[1:-1])
+    words = name.split(".")[:-1]
+    i = _title_end(words)
+    return len(words) > 1 and (words[i - 1] in OWN_TAGS or words[-1] in OWN_TAGS)
 
 
 def settings(model):
@@ -106,31 +202,80 @@ def settings(model):
             "min_sim": core.MODELS[model]["min_sim"]}
 
 
-def _write_atomic(path, cues=None, copy_of=None):
-    tmp = path + ".tmp"
-    if copy_of:
-        with open(copy_of, "rb") as src, open(tmp, "wb") as dst:
-            dst.write(src.read())
-    else:
-        core.write(tmp, cues)
-    os.chmod(tmp, 0o664)
-    os.replace(tmp, path)
+# --- files -------------------------------------------------------------------------------------
+
+def _umask():
+    mask = os.umask(0)
+    os.umask(mask)
+    return mask
+
+
+def _stage(path, cues=None, copy_of=None, like=None):
+    """Write what `path` will hold into a new temporary file beside it (same file system: moving
+    it in place is atomic), flushed to disk, with the permissions of the file it replaces, else
+    of `like`, else the usual ones (umask). Returns the temporary path."""
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path) or ".", prefix="." + os.path.basename(path) + ".",
+                               suffix=".tmp")
+    os.close(fd)
+    try:
+        if copy_of:
+            shutil.copyfile(copy_of, tmp)
+        else:
+            core.write(tmp, cues)
+        with open(tmp, "r+b") as f:
+            os.fsync(f.fileno())
+        mode = next((os.stat(p).st_mode & 0o777 for p in (path, like) if p and os.path.exists(p)),
+                    0o666 & ~_umask())
+        os.chmod(tmp, mode)
+    except BaseException:
+        _remove(tmp)
+        raise
+    return tmp
+
+
+def _write_atomic(path, cues=None, copy_of=None, like=None):
+    tmp = _stage(path, cues, copy_of, like)
+    try:
+        os.replace(tmp, path)
+    finally:
+        _remove(tmp)
 
 
 def _remove(path):
-    if os.path.exists(path):
+    if path and os.path.exists(path):
         os.remove(path); return path
     return None
 
 
+def _set_aside(path):
+    """Keep a file under a name no player nor this worker reads: '<name>.<time>.bak'."""
+    dest = f"{path}.{time.strftime('%Y%m%d-%H%M%S')}.{time.time_ns() % 10**9:09d}.bak"
+    os.replace(path, dest)
+    return dest
+
+
+def inside_media_root(*paths):
+    roots = [os.path.realpath(r) for r in MEDIA_ROOT.split(os.pathsep) if r]
+    if not roots:
+        return True
+    def inside(p, root):
+        try:
+            return os.path.commonpath([root, os.path.realpath(p)]) == root
+        except ValueError:          # another drive (Windows)
+            return False
+    return all(any(inside(p, r) for r in roots) for p in paths)
+
+
+# --- one subtitle ------------------------------------------------------------------------------
+
 def process(video, sub, origin="manual", force=False, score=None, state=None, model=None):
     """`model`: a model chosen by hand for this subtitle (kept for later runs), "default" to
-    drop such a choice, None to keep what state.db says."""
+    drop such a choice, None to keep what state.db says. Returns the logged record."""
     if model not in (None, "default"):
         core.check_model(model)
     t0 = time.time()
     rec = {"origin": origin, "video": video, "sub": sub}
-    if not (os.path.isfile(video) and os.path.isfile(sub)) or not sub.lower().endswith(".srt") or is_own(sub):
+    if not (os.path.isfile(video) and os.path.isfile(sub)) or not sub.lower().endswith(".srt") or is_own(sub, video):
         return log({**rec, "status": "skipped", "reason": "missing file or not a downloaded .srt"})
     own_state = state is None
     state = state or State(DB)
@@ -149,59 +294,103 @@ def kept_output(row, sub, side):
     return out is None or (out in (sub, side) and os.path.isfile(out) and sha256(out) == row["output_sha256"])
 
 
+def _records(row):
+    """The recorded decision and, after an interrupted run, the one that was being written."""
+    return [r for r in (row, (row or {}).get("pending")) if r]
+
+
+def locate(sub, replaced, row, cur):
+    """The file that holds the downloaded subtitle. In replace mode `sub` may hold the worker's own
+    correction (a hash recorded for it), the download being kept in the .replaced file; a new
+    download overwrites `sub` (another hash). With no record at all (state.db lost or reset), an
+    existing .replaced file can only be a download kept by an earlier run."""
+    if not os.path.isfile(replaced):
+        return sub
+    if row is None:
+        return replaced
+    ours = {r.get("output_sha256") for r in _records(row) if r.get("output_path") == sub}
+    return replaced if cur in ours else sub
+
+
 def _process(video, sub, rec, t0, force, score, state, model):
     replaced, side = tagged_path(video, sub, REPLACED), side_path(video, sub)
     row = state.get(sub)
     choice = (row or {}).get("model_choice") if model is None else (None if model == "default" else model)
     use = choice or core.DEFAULT_MODEL
     cur = sha256(sub)
-    # Where is the downloaded subtitle? In replace mode, `sub` may hold the worker's own correction and
-    # the download sits in the .replaced file; a new download overwrites `sub` (another hash).
-    ours = bool(row and row["output_sha256"] == cur and row["output_path"] == sub)
-    source = replaced if ours and os.path.isfile(replaced) else sub
-    src_sha = sha256(source)
+    source = locate(sub, replaced, row, cur)
+    src_sha = cur if source == sub else sha256(source)
     vsize, vmtime = video_stamp(video)
-    if (not force and row and row["status"] != "error" and row["input_sha256"] == src_sha
+    # files left by an interrupted run, or by another output mode
+    leftover = [p for p, wanted in ((side, row and row["output_path"] == side),
+                                    (replaced, row and row["output_path"] == sub)) if not wanted and os.path.exists(p)]
+    if (not force and row and row["pending"] is None and row["input_sha256"] == src_sha
             and (row["video_size"], row["video_mtime"]) == (vsize, vmtime) and row["output_mode"] == OUTPUT
             and (model is None or (row["model"], row["model_choice"]) == (use, choice))
             and cur in (row["input_sha256"], row["output_sha256"])
-            and kept_output(row, sub, side)):
-        return log({**rec, "status": "unchanged", "last": row["status"], "processed_at": row["processed_at"]})
+            and kept_output(row, sub, side) and not leftover):
+        # not kept in the log file: re-runs and backfills would fill it and push real history out
+        return log({**rec, "status": "unchanged", "last": row["status"], "processed_at": row["processed_at"]},
+                   keep=False)
 
     lang, kind = media.language_key(media.language_of(sub)), media.kind_of(sub)
     entry = {**rec, "lang": lang, "kind": kind, "input_sha256": src_sha, "input_size": os.path.getsize(source),
              "video_size": vsize, "video_mtime": vmtime, "output_mode": OUTPUT, "engine_version": __version__,
              "model": use, "model_choice": choice, "settings": settings(use), "score": score}
+    # hashes of content that may be overwritten or removed: the download and the corrections, recorded
+    # or being written. Any other content found where a file is about to go is set aside.
+    known = {src_sha} | {r.get(k) for r in _records(row) for k in ("input_sha256", "output_sha256")}
 
     def settle(status, out=None, **info):
-        """Put the files in their final state; record and log the decision."""
-        cleaned = []
-        if out is None:
-            if source == replaced:
-                os.replace(replaced, sub)          # back to the download: no correction any more
+        """Put the files in their final state; record and log the decision. The intended state is
+        recorded first, so a run interrupted at any step is recognised and completed next time."""
+        outp = None if out is None else sub if OUTPUT == "replace" else side
+        tmp = _stage(outp, out, like=sub) if outp else None
+        cleaned, aside = [], []
+        try:
+            out_sha = sha256(tmp) if tmp else None
+            # the downloader may have written a new subtitle during the run: it is a new job, this
+            # result is not written
+            if sha256(sub) != cur or (source != sub and (not os.path.isfile(source) or sha256(source) != src_sha)):
+                return log({**rec, "status": CHANGED, "reason": "the subtitle changed while it was processed"})
+            safe = known | {out_sha}
+
+            def make_way(path, remove=False):
+                """`path` is about to be overwritten (or removed): a content not accounted for is
+                renamed instead."""
+                if not os.path.isfile(path):
+                    return
+                if sha256(path) not in safe:
+                    aside.append(_set_aside(path))
+                elif remove:
+                    cleaned.append(_remove(path))
+
+            state.begin(sub, {"input_sha256": src_sha, "output_sha256": out_sha, "output_path": outp})
+            if out is None or OUTPUT == "side":
+                if source == replaced:
+                    make_way(sub)
+                    os.replace(replaced, sub)      # the download gets its name back
+                else:
+                    make_way(replaced, remove=True)
+            if out is None:
+                cleaned.append(_remove(side))
+            elif OUTPUT == "replace":
+                if source == sub:
+                    make_way(replaced)
+                    _write_atomic(replaced, copy_of=sub, like=sub)   # the download stays visible as "Replaced"
+                make_way(sub)
+                os.replace(tmp, sub)
+                cleaned.append(_remove(side))
             else:
-                cleaned.append(_remove(replaced))
-            cleaned.append(_remove(side))
-            outp = None
-        elif OUTPUT == "replace":
-            if source == sub:
-                _write_atomic(replaced, copy_of=sub)   # the download stays visible as "Replaced"
-            _write_atomic(sub, out)
-            cleaned.append(_remove(side))
-            outp = sub
-        else:
-            if source == replaced:
-                os.replace(replaced, sub)
-            else:
-                cleaned.append(_remove(replaced))
-            _write_atomic(side, out)
-            outp = side
-        full = {**entry, "status": status, "secs": round(time.time() - t0, 1), **info,
-                "output_path": outp, "output_sha256": sha256(outp) if outp else None,
-                "replaced_path": replaced if outp == sub else None}
-        state.put(full)
+                os.replace(tmp, side)
+            full = {**entry, "status": status, "secs": round(time.time() - t0, 1), **info,
+                    "output_path": outp, "output_sha256": out_sha, "replaced_path": replaced if outp == sub else None}
+            state.put(full)
+        finally:
+            _remove(tmp)
         cleaned = [p for p in cleaned if p]
-        log({k: v for k, v in full.items() if v is not None} | ({"removed": cleaned} if cleaned else {}))
+        return log({k: v for k, v in full.items() if v is not None} | ({"removed": cleaned} if cleaned else {})
+                   | ({"kept_aside": aside} if aside else {}))
 
     tracks = media.probe_subtitles(video)
     twin = media.embedded_twin(tracks, sub)
@@ -218,7 +407,7 @@ def _process(video, sub, rec, t0, force, score, state, model):
         return settle("unsure", **info, reason=st.get("status"))
     if status == "in_sync":
         return settle("in_sync", **info)
-    settle("corrected", out, **info)
+    return settle("corrected", out, **info)
 
 
 def segments(st):
@@ -229,49 +418,134 @@ def segments(st):
             for s in st.get("seg", [])] or None
 
 
+# --- the queue ---------------------------------------------------------------------------------
+
 def unload_model():
-    """A model takes 0.2 to 0.5 GB: free it while the queue is empty."""
-    if core._models:
-        core._models.clear(); core._cache.clear(); gc.collect()
+    """A model takes 0.2 to 0.5 GB: free it while the queue is empty. (The embedding cache is
+    bounded by core, so a long backlog does not pile up vectors.)"""
+    core.unload()
+
+
+def queued_jobs():
+    """Queued jobs, oldest first; a job removed meanwhile (by hand, by another worker) is left out."""
+    jobs = []
+    for name in os.listdir(QUEUE):
+        if name.endswith(".job"):
+            path = os.path.join(QUEUE, name)
+            try:
+                jobs.append((os.path.getmtime(path), name, path))
+            except OSError:
+                pass
+    return [p for _, _, p in sorted(jobs)]
+
+
+def run_job(job, state):
+    """Process one job file and remove it; a failed job is moved to FAILED. Returns the status, or
+    None when the job could not be removed nor moved (the caller must not take it again)."""
+    try:
+        with open(job, encoding="utf-8") as f:
+            j = json.load(f)
+        if not inside_media_root(j["video"], j["sub"]):
+            status = log({"origin": j.get("origin", "bazarr"), "video": j["video"], "sub": j["sub"],
+                          "status": "skipped", "reason": "outside SEMSYNC_MEDIA_ROOT"})["status"]
+        else:
+            status = process(j["video"], j["sub"], j.get("origin", "bazarr"), j.get("force", False), j.get("score"),
+                             state, j.get("model"))["status"]
+        dest = None
+    except FileNotFoundError:
+        if not os.path.exists(job):
+            return "gone"                     # removed meanwhile
+        status, dest = "error", os.path.join(FAILED, os.path.basename(job))
+        _log_error(job)
+    except Exception:
+        status, dest = "error", os.path.join(FAILED, os.path.basename(job))
+        _log_error(job)
+    try:
+        if dest:
+            os.makedirs(FAILED, exist_ok=True)
+            os.replace(job, dest)
+        else:
+            os.remove(job)
+    except FileNotFoundError:
+        pass
+    except OSError as e:
+        _log_error(job, f"cannot remove the job: {e!r}")
+        return None
+    return status
+
+
+def _log_error(job, error=None):
+    """The end of the traceback goes to the log file only; stdout gets one line."""
+    exc = sys.exc_info()[1]
+    try:
+        log({"status": "error", "job": os.path.basename(job), "error": error or repr(exc)},
+            detail={"trace": traceback.format_exc()[-2000:]} if exc else None)
+    except Exception as e:                    # the log itself failed (disk full...): stderr
+        print(f"semantic-subsync-worker: {job}: {error or repr(exc)} (log: {e!r})", file=sys.stderr, flush=True)
+
+
+def drain(state, stuck=None):
+    """Process the jobs queued now. `stuck`: jobs that could not be removed, not taken again.
+    Returns {status: count}."""
+    stuck = set() if stuck is None else stuck
+    counts = {}
+    for job in queued_jobs():
+        if job in stuck:
+            continue
+        status = run_job(job, state)
+        if status is None:
+            stuck.add(job)
+        elif status != "gone":
+            counts[status] = counts.get(status, 0) + 1
+    return counts
 
 
 def run():
     os.makedirs(QUEUE, exist_ok=True); os.makedirs(FAILED, exist_ok=True)
     log({"status": "worker_started", "version": __version__, "output": OUTPUT, "extra_lines": EXTRA_LINES,
-         "model": core.DEFAULT_MODEL, "model_dir": os.environ.get("SEMSYNC_MODEL_DIR")})
-    state = State(DB)
+         "model": core.DEFAULT_MODEL, "model_dir": os.environ.get("SEMSYNC_MODEL_DIR"),
+         "media_root": MEDIA_ROOT or None})
+    state, stuck, done = State(DB), set(), {}
     while True:
-        jobs = sorted((os.path.join(QUEUE, j) for j in os.listdir(QUEUE) if j.endswith(".job")), key=os.path.getmtime)
-        if not jobs:
-            unload_model(); time.sleep(POLL); continue
-        for job in jobs:
-            try:
-                j = json.load(open(job, encoding="utf-8"))
-                process(j["video"], j["sub"], j.get("origin", "bazarr"), j.get("force", False), j.get("score"), state,
-                        j.get("model"))
-                os.remove(job)
-            except Exception as e:
-                log({"status": "error", "job": os.path.basename(job), "error": repr(e), "trace": traceback.format_exc()[-800:]})
-                os.replace(job, os.path.join(FAILED, os.path.basename(job)))
+        counts = drain(state, stuck)
+        for k, v in counts.items():
+            done[k] = done.get(k, 0) + v
+        if not counts:
+            if done:                          # one line for the batch: `unchanged` jobs are not logged one by one
+                log({"status": "queue_empty", "jobs": sum(done.values()), "counts": done}); done = {}
+            unload_model(); time.sleep(POLL)
+
+
+def enqueue(job, n=0):
+    """Drop a job file into the queue: written under a temporary name then renamed, so the worker
+    never reads half a job; the name is unique (time, then `n`), so no pending job is overwritten."""
+    os.makedirs(QUEUE, exist_ok=True)
+    name = os.path.join(QUEUE, f"{time.time_ns()}-{n:06d}-{job.get('origin', 'job')}.job")
+    with open(name + ".tmp", "w", encoding="utf-8") as f:
+        json.dump(job, f, ensure_ascii=False)
+    os.replace(name + ".tmp", name)
+    return name
 
 
 def backfill(root):
-    """Queue every external .srt that sits next to its video (same file name stem). Subtitles
+    """Queue every external .srt that sits next to its video (the longest video name it starts
+    with: 'Movie.Extended.fr.srt' belongs to 'Movie.Extended.mkv', not 'Movie.mkv'). Subtitles
     already processed and unchanged are skipped quickly by the worker (state.db)."""
-    os.makedirs(QUEUE, exist_ok=True); n = 0
+    n = 0
     for d, _, files in os.walk(root):
-        videos = [f for f in files if f.lower().endswith(media.VIDEO_EXT)]
+        videos = sorted((f for f in files if f.lower().endswith(media.VIDEO_EXT)),
+                        key=lambda v: len(os.path.splitext(v)[0]), reverse=True)
         for f in sorted(files):
-            if not f.lower().endswith(".srt") or is_own(f):
+            if not f.lower().endswith(".srt"):
                 continue
             v = next((x for x in videos if f.startswith(os.path.splitext(x)[0] + ".")), None)
-            if v:
-                job = {"video": os.path.join(d, v), "sub": os.path.join(d, f), "origin": "backfill"}
-                with open(os.path.join(QUEUE, f"backfill-{n:05d}.job"), "w", encoding="utf-8") as fh:
-                    json.dump(job, fh, ensure_ascii=False)
+            if v and not is_own(f, v):
+                enqueue({"video": os.path.join(d, v), "sub": os.path.join(d, f), "origin": "backfill"}, n)
                 n += 1
     log({"status": "backfill_queued", "root": root, "jobs": n})
 
+
+# --- reading the state and the log -------------------------------------------------------------
 
 def matches(path, terms):
     """True when the path contains every term, whatever the case: `TITLE S01E02` does not
@@ -280,17 +554,17 @@ def matches(path, terms):
     return all(t.lower() in path for t in terms)
 
 
-def status(args):
-    if "--fields" in args:
+def status(terms, fields=False):
+    if fields:
         for k, v in FIELDS.items():
             print(f"{k:16} {v}")
         return
-    terms = [a for a in args if not a.startswith("-")]
     rows = [r for r in State(DB).all() if matches(r["sub"], terms)]
     counts = {}
     for r in rows:
-        counts[r["status"]] = counts.get(r["status"], 0) + 1
-        print(f"{r['processed_at']}  {r['status']:12} {r['sub']}")
+        st = r["status"] or "pending"            # a first run interrupted while writing its files
+        counts[st] = counts.get(st, 0) + 1
+        print(f"{r['processed_at'] or '':19}  {st:12} {r['sub']}")
     print(json.dumps(counts))
 
 
@@ -319,37 +593,55 @@ def history(terms):
                       + (f"  drift {s['drift_ppm']} ppm" if s.get("drift_ppm") else ""))
             for p in r.get("removed") or []:
                 print(f"      removed {os.path.basename(p)}")
+            for p in r.get("kept_aside") or []:
+                print(f"      kept aside as {os.path.basename(p)}")
         print()
     if len(groups) > 1:
         print(f"{len(groups)} subtitles match: add words to narrow down (series, season, language)")
 
 
-def main():
+def parser():
+    p = argparse.ArgumentParser(prog="semantic-subsync-worker", formatter_class=argparse.RawDescriptionHelpFormatter,
+                                description=__doc__)
+    cmds = p.add_subparsers(dest="cmd", metavar="COMMAND")
+    cmds.add_parser("run", help="process the queue forever (the default)")
+    one = cmds.add_parser("one", help="process one pair now")
+    one.add_argument("video")
+    one.add_argument("sub")
+    one.add_argument("--force", action="store_true", help="process it again even if nothing changed")
+    one.add_argument("--model", choices=[*core.MODELS, "default"], help="model for this subtitle, kept for later runs")
+    b = cmds.add_parser("backfill", help="enqueue every external .srt next to its video")
+    b.add_argument("root", nargs="?", default="/data/media")
+    s = cmds.add_parser("status", help="what state.db knows, for the paths containing every WORD")
+    s.add_argument("words", nargs="*", metavar="WORD")
+    s.add_argument("--fields", action="store_true", help="what each column means")
+    h = cmds.add_parser("history", help="every logged decision about the paths containing every WORD")
+    h.add_argument("words", nargs="+", metavar="WORD")
+    cmds.add_parser("prepare", help="download and load the sentence model now")
+    return p
+
+
+def main(argv=None):
+    args = parser().parse_args(sys.argv[1:] if argv is None else argv)
+    cmd = args.cmd or "run"
+    if cmd in ("run", "one", "backfill", "prepare"):
+        check_settings()
     if hasattr(os, "nice"):         # POSIX only
         os.nice(19)                 # Jellyfin keeps priority on the CPU
-    args = sys.argv[1:] or ["run"]
-    cmd, rest = args[0], args[1:]
     if cmd == "run":
         run()
     elif cmd == "one":
         os.makedirs(BASE, exist_ok=True)
-        force = "--force" in rest
-        model = None
-        if "--model" in rest:
-            i = rest.index("--model"); model = rest[i + 1]; del rest[i:i + 2]
-        video, sub = [a for a in rest if a != "--force"]
-        process(video, sub, force=force, model=model)
+        process(args.video, args.sub, force=args.force, model=args.model)
     elif cmd == "backfill":
-        backfill(rest[0] if rest else "/data/media")
+        backfill(args.root)
     elif cmd == "status":
-        status(rest)
-    elif cmd == "history" and rest:
-        history(rest)
+        status(args.words, args.fields)
+    elif cmd == "history":
+        history(args.words)
     elif cmd == "prepare":
         t0 = time.time(); core.embed(["ready"], model=core.DEFAULT_MODEL)
         print(json.dumps({"status": "ready", "model": core.DEFAULT_MODEL, "secs": round(time.time() - t0, 1)}))
-    else:
-        sys.exit(__doc__)
 
 
 if __name__ == "__main__":

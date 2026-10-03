@@ -62,7 +62,7 @@ A French subtitle was downloaded for a 10-minute episode (an
 
 ```console
 $ semantic-subsync downloaded.fr.srt reference.en.srt
-corrected -> downloaded.fr.synced.srt (2 segment(s), largest shift +90.69 s) [reference: reference.en.srt]
+corrected -> downloaded.fr.synced.srt (2 segment(s), largest shift +90.68 s) [reference: reference.en.srt]
 ```
 
 | Line | Heard in the video at | Before | After |
@@ -96,6 +96,9 @@ the same output. The other cases (offset, frame rate, extra lines), each step an
 ## Results
 
 These figures describe the files they were measured on, not what the tool will do on any video.
+They were measured with the minilm model (the benchmark on version 0.7); the default static
+model, run again on the same files, passed as many benchmark cases and made the same decisions
+on the datasets.
 
 - **Benchmark** (105 distorted embedded tracks: offsets, frame-rate changes, cuts, inserted and
   removed scenes): SemanticSubSync passed 104 cases; alass passed 84 and had 10 gross failures,
@@ -142,11 +145,11 @@ download stays available as an extra track. See the [Bazarr guide](integrations/
 
 ### Command line
 
-Python 3.11 or later, on 64-bit Linux, macOS or Windows (x86-64 or ARM64); ffmpeg when the
+Python 3.11 or later, on 64-bit Linux (x86-64 or ARM64), macOS or Windows; ffmpeg when the
 reference is a video.
 
 ```bash
-pip install "semantic-subsync[model] @ git+https://github.com/ludosch/SemanticSubSync"
+pip install "semantic-subsync[model] @ git+https://github.com/ludosch/SemanticSubSync@v0.12.0"
 ```
 
 The default model (about 220 MB) is downloaded from Hugging Face on first use.

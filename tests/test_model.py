@@ -79,3 +79,13 @@ def test_real_model_translation_pairs_score_above_min_sim(model):
     v_en = core.embed([en for en, _ in PAIRS], model); v_fr = core.embed([fr for _, fr in PAIRS], model)
     sims = np.sum(v_en * v_fr, axis=1)
     assert sims.min() >= core.MODELS[model]["min_sim"], sorted(zip(sims.round(2), (en for en, _ in PAIRS)))[:3]
+
+
+def test_real_model_unrelated_lines_score_below_min_sim(model):
+    """The tests' fake embedder uses one min_sim for every model: each real model must itself
+    reject lines that do not say the same thing (every English line against every French line
+    of another pair)."""
+    v_en = core.embed([en for en, _ in PAIRS], model); v_fr = core.embed([fr for _, fr in PAIRS], model)
+    sims = v_en @ v_fr.T
+    other = sims[~np.eye(len(PAIRS), dtype=bool)]
+    assert other.max() < core.MODELS[model]["min_sim"], np.sort(other)[-5:].round(2)

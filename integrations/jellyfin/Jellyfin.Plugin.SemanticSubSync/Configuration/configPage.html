@@ -29,8 +29,8 @@
                         </label>
                         <div class="fieldDescription checkboxFieldDescription">Off: the subtitles found in a library
                             when the plugin first saw it are left as they are. On: the scheduled task processes them
-                            too, one at a time and never during playback; on a large library and a small server, this
-                            can take hours.</div>
+                            too, one at a time, without starting a subtitle while someone is watching; on a large
+                            library and a small server, this can take hours.</div>
                     </div>
                     <div class="selectContainer">
                         <label class="selectLabel" for="OutputMode">Correction</label>
@@ -43,7 +43,9 @@
                         <label class="inputLabel inputLabelUnfocused" for="EngineSource">Engine source (advanced)</label>
                         <input id="EngineSource" type="text" is="emby-input" />
                         <div class="fieldDescription">Leave empty for the release this plugin was built for. A wheel
-                            path or URL installs that build instead.</div>
+                            path or URL installs that build instead (with the dependency versions of a
+                            <code>semantic-subsync-X.Y.Z-constraints.txt</code> next to it, if there is one); the
+                            current engine is kept until the new one is ready.</div>
                     </div>
                     <div>
                         <button is="emby-button" type="submit" class="raised button-submit block emby-button">
@@ -60,49 +62,74 @@
                 not_installed: 'not installed yet: it starts a few minutes after Jellyfin starts, or with the first sync',
                 installing: 'installing (a few minutes)…',
                 ready: 'ready',
-                failed: 'installation failed (see the Jellyfin log); tried again every hour and with the next sync'
+                failed: 'installation failed (see the Jellyfin log); tried again with the next syncs, at most once an hour'
             };
+
+            var sssPolling = false;   // one status loop, however often the page is shown
 
             function showEngine() {
                 var span = document.querySelector('#SssEngine');
                 if (!span || !span.offsetParent) {   // the page was left: stop asking
+                    sssPolling = false;
                     return;
                 }
                 ApiClient.ajax({ type: 'GET', url: ApiClient.getUrl('SemanticSubSync/Status'), dataType: 'json' }).then(function (s) {
                     span.textContent = (SssStates[s.State] || s.State) + (s.State === 'failed' && s.Message ? ': ' + s.Message : '');
-                    if (s.State === 'installing' || s.State === 'not_installed') {
+                    return s.State === 'installing' || s.State === 'not_installed';
+                }, function () {
+                    span.textContent = 'unknown (the server did not answer); asking again';
+                    return true;
+                }).then(function (again) {
+                    if (again) {
                         setTimeout(showEngine, 5000);
+                    } else {
+                        sssPolling = false;
                     }
                 });
             }
 
+            function sssSave(enabled) {
+                document.querySelector('#SemanticSubSyncConfigForm .button-submit').disabled = !enabled;
+            }
+
             document.querySelector('#SemanticSubSyncConfigPage').addEventListener('pageshow', function () {
-                showEngine();
+                if (!sssPolling) {
+                    sssPolling = true;
+                    showEngine();
+                }
+                sssSave(false);   // until the libraries are listed: saving earlier would include them all
                 Dashboard.showLoadingMsg();
-                ApiClient.getPluginConfiguration(SemanticSubSyncConfig.pluginUniqueId).then(function (config) {
+                Promise.all([
+                    ApiClient.getPluginConfiguration(SemanticSubSyncConfig.pluginUniqueId),
+                    ApiClient.getVirtualFolders()
+                ]).then(function (r) {
+                    var config = r[0];
                     var excluded = config.ExcludedLibraries || [];
-                    ApiClient.getVirtualFolders().then(function (folders) {
-                        var box = document.querySelector('#SssLibraries');
-                        box.innerHTML = '';
-                        folders.forEach(function (f) {
-                            var div = document.createElement('div');
-                            div.className = 'checkboxContainer';
-                            div.innerHTML = '<label class="emby-checkbox-label"><input type="checkbox" is="emby-checkbox" class="sssLib" /><span></span></label>';
-                            var input = div.querySelector('input');
-                            input.setAttribute('data-id', f.ItemId);
-                            input.checked = excluded.indexOf(f.ItemId) < 0;
-                            div.querySelector('span').textContent = f.Name;
-                            box.appendChild(div);
-                        });
+                    var box = document.querySelector('#SssLibraries');
+                    box.innerHTML = '';
+                    r[1].forEach(function (f) {
+                        var div = document.createElement('div');
+                        div.className = 'checkboxContainer';
+                        div.innerHTML = '<label class="emby-checkbox-label"><input type="checkbox" is="emby-checkbox" class="sssLib" /><span></span></label>';
+                        var input = div.querySelector('input');
+                        input.setAttribute('data-id', f.ItemId);
+                        input.checked = excluded.indexOf(f.ItemId) < 0;
+                        div.querySelector('span').textContent = f.Name;
+                        box.appendChild(div);
                     });
                     document.querySelector('#ProcessExisting').checked = config.ProcessExisting;
-                    document.querySelector('#OutputMode').value = config.OutputMode;
+                    document.querySelector('#OutputMode').value = config.OutputMode === 'side' ? 'side' : 'replace';
                     document.querySelector('#EngineSource').value = config.EngineSource || '';
+                    sssSave(true);
+                }).catch(function () {
+                    Dashboard.alert('Could not load the settings: reload the page.');
+                }).finally(function () {
                     Dashboard.hideLoadingMsg();
                 });
             });
 
             document.querySelector('#SemanticSubSyncConfigForm').addEventListener('submit', function (e) {
+                e.preventDefault();
                 Dashboard.showLoadingMsg();
                 ApiClient.getPluginConfiguration(SemanticSubSyncConfig.pluginUniqueId).then(function (config) {
                     config.ExcludedLibraries = Array.prototype.map.call(
@@ -110,11 +137,13 @@
                     config.ProcessExisting = document.querySelector('#ProcessExisting').checked;
                     config.OutputMode = document.querySelector('#OutputMode').value;
                     config.EngineSource = document.querySelector('#EngineSource').value.trim();
-                    ApiClient.updatePluginConfiguration(SemanticSubSyncConfig.pluginUniqueId, config).then(function (result) {
-                        Dashboard.processPluginConfigurationUpdateResult(result);
-                    });
+                    return ApiClient.updatePluginConfiguration(SemanticSubSyncConfig.pluginUniqueId, config);
+                }).then(function (result) {
+                    Dashboard.processPluginConfigurationUpdateResult(result);
+                }).catch(function () {
+                    Dashboard.hideLoadingMsg();
+                    Dashboard.alert('The settings could not be saved.');
                 });
-                e.preventDefault();
                 return false;
             });
         </script>

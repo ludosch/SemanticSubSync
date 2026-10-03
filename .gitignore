@@ -6,7 +6,6 @@ __pycache__/
 dist/
 build/
 *.srt
-!tests/data/*.srt
 !examples/**/*.srt
 examples/**/out.*.srt
 examples/**/*.synced.srt
@@ -15,3 +14,6 @@ examples/**/*.synced.srt
 integrations/jellyfin/**/bin/
 integrations/jellyfin/**/obj/
 integrations/jellyfin/artifacts/
+
+# tools/bench_real.py output (real subtitles stay out of the repository)
+bench_real.jsonl

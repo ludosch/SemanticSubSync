@@ -35,23 +35,21 @@ public sealed class SyncNewSubtitlesTask : IScheduledTask
             return;
         }
 
+        _sync.PruneMissing();
         var videos = new List<Video>();
         foreach (var lib in _sync.ChosenLibraries())
         {
-            var inLib = _sync.Videos(lib);
-            if (!_sync.BaselineIfNew(lib, inLib))
-            {
-                videos.AddRange(inLib);
-            }
+            _sync.BaselineIfNew(lib);
+            videos.AddRange(_sync.Videos(lib));
         }
 
         videos = videos.DistinctBy(v => v.Id).ToList();
         for (var i = 0; i < videos.Count; i++)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (!await _sync.ProcessAsync(videos[i], cancellationToken).ConfigureAwait(false))
+            if (await _sync.ProcessAsync(videos[i], cancellationToken).ConfigureAwait(false) != SyncOutcome.Done)
             {
-                return;   // someone is watching or the engine is unavailable: the next run continues
+                return;   // someone is watching or no engine can run: the next run continues
             }
 
             progress.Report(100.0 * (i + 1) / videos.Count);

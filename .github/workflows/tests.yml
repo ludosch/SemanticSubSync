@@ -1,22 +1,66 @@
 name: tests
 
+# Runs on every push to main and every pull request (a release tag is built by release.yml from
+# a commit already tested). tools/release.py requires a green run on the released commit, so even
+# a documentation-only commit gets a run: the first job lists the changed files and the others
+# only start when their files changed (a skipped job counts as passed). The repository is public,
+# so CI minutes are free, but the jobs stay lean: one end-to-end job per architecture, the
+# Docker image and the Jellyfin plugin only when their own files change.
 on:
-  # Branch pushes only (a release tag is built by release.yml from a commit already tested),
-  # and not for documentation-only changes: CI minutes are limited on a private repository.
   push:
     branches: [main]
-    paths-ignore: ["**.md", "docs/**", "LICENSE"]
   pull_request:
-    paths-ignore: ["**.md", "docs/**", "LICENSE"]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+env:
+  UV_VERSION: "0.12.x"   # the uv of mise.toml
+
 jobs:
-  # Unit tests, then end to end with the real model, on x86-64 and on ARM64 (Raspberry Pi class
+  changes:
+    runs-on: ubuntu-24.04
+    outputs:
+      python: ${{ steps.paths.outputs.python }}
+      release-files: ${{ steps.paths.outputs.release-files }}
+      image: ${{ steps.paths.outputs.image }}
+      plugin: ${{ steps.paths.outputs.plugin }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - id: paths
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          # A manual run, a new branch or a rewritten history (no usable base): everything runs.
+          if [ -n "$BASE" ] && git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            files=$(git diff --name-only "$BASE" HEAD)
+          else
+            files=ALL
+          fi
+          printf '%s\n' "$files"
+          ci='^\.github/workflows/tests\.yml$|'      # a change of this file runs every job
+          has() { [ "$files" = ALL ] || grep -qE "$1" <<<"$files"; }
+          other() { [ "$files" = ALL ] || grep -qvE "$1" <<<"$files"; }
+          flag() { if "$@"; then echo true; else echo false; fi; }
+          {
+            # anything but documentation and the C# plugin
+            echo "python=$(flag other '\.md$|\.svg$|^docs/|^LICENSE$|^\.gitignore$|^integrations/jellyfin/')"
+            # the files tests/test_release.py reads
+            echo "release-files=$(flag has "${ci}^README(\.fr)?\.md$|^CHANGELOG\.md$|^integrations/jellyfin/")"
+            echo "image=$(flag has "${ci}^Dockerfile$|^requirements\.txt$|^pyproject\.toml$|^src/|^tools/smoke_image\.py$")"
+            echo "plugin=$(flag has "${ci}^integrations/jellyfin/")"
+          } | tee -a "$GITHUB_OUTPUT"
+
+  # Unit tests, then end to end with the real models, on x86-64 and on ARM64 (Raspberry Pi class
   # hardware). The goal is "runs without crashing" on both architectures, not speed. Each
   # architecture runs one of the two supported Python versions: 3.11 is the oldest one and the
-  # Docker image's, 3.12 a newer one. Each job is billed by the started minute, hence one job
-  # per architecture and no Docker build here (release.yml builds and checks the images).
+  # Docker image's, 3.12 a newer one.
   end-to-end:
+    needs: changes
+    if: needs.changes.outputs.python == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -31,50 +75,104 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10.2.0
-      - run: uname -m && uv run python --version
+        with:
+          version: ${{ env.UV_VERSION }}
+      - run: uname -m && uv run --locked python --version
 
       - name: Unit tests
-        run: uv run pytest -q
+        run: uv run --locked pytest -q
 
-      - name: Real models (static and FP16 minilm, downloaded on first use)
+      - name: Real models as downloaded (static, FP16 minilm)
         env:
           SEMSYNC_TEST_MODEL: "1"
-        run: uv run --extra model pytest -m model -q
+        run: uv run --locked --extra model pytest -m model -q
 
-      - name: Build the int8 minilm, then run the same tests with it
+      - name: Build the int8 minilm, then run the minilm tests with it
         env:
           SEMSYNC_TEST_MODEL: "1"
           SEMSYNC_MODEL_DIR: ${{ runner.temp }}/models
         run: |
-          uv run --extra model --with onnx python tools/quantize_model.py "$SEMSYNC_MODEL_DIR/minilm"
-          uv run --extra model pytest -m model -q
+          uv run --locked --extra model --with onnx==1.23.1 python tools/quantize_model.py "$SEMSYNC_MODEL_DIR/minilm"
+          uv run --locked --extra model pytest -m model -q -k minilm
 
-      - name: Command line on the lighthouse example, with each model
+      - name: Command line on the lighthouse example, with each model (its README says 100 % and unsure)
+        working-directory: examples/lighthouse
         env:
-          SEMSYNC_MODEL_DIR: ${{ runner.temp }}/models
+          INT8_DIR: ${{ runner.temp }}/models
         run: |
-          cd examples/lighthouse
-          for m in static minilm; do
-            uv run --extra model semantic-subsync --model $m 1-missing-scene/downloaded.fr.srt 1-missing-scene/reference.en.srt -o "$RUNNER_TEMP/$m-out1.srt"
-            uv run --extra model semantic-subsync --model $m 2-extra-scene/downloaded.fr.srt 2-extra-scene/reference.en.srt -o "$RUNNER_TEMP/$m-out2.srt"
-            set +e
-            uv run --extra model semantic-subsync --model $m 3-wrong-reference/downloaded.fr.srt 3-wrong-reference/reference.commentary.srt -o "$RUNNER_TEMP/$m-out3.srt"
-            status=$?
-            set -e
+          for variant in static minilm minilm-int8; do
+            model=${variant%-int8}
+            if [ "$variant" = minilm-int8 ]; then export SEMSYNC_MODEL_DIR="$INT8_DIR"; else unset SEMSYNC_MODEL_DIR; fi
+            out="$RUNNER_TEMP/$variant"
+            run_sss() { uv run --locked --extra model semantic-subsync --model "$model" "$@"; }
+            run_sss 1-missing-scene/downloaded.fr.srt 1-missing-scene/reference.en.srt -o "$out-1.srt"
+            run_sss 2-extra-scene/downloaded.fr.srt 2-extra-scene/reference.en.srt -o "$out-2.srt"
+            status=0
+            run_sss 3-wrong-reference/downloaded.fr.srt 3-wrong-reference/reference.commentary.srt -o "$out-3.srt" || status=$?
             test "$status" -eq 1                    # the wrong reference: unsure, nothing written
-            test ! -e "$RUNNER_TEMP/$m-out3.srt"
-          done
-          uv run python - <<'EOF'
-          import os
-          from semantic_subsync import media
-          tmp = os.environ["RUNNER_TEMP"]
-          for case, out in [(c, f"{m}-{o}") for m in ("static", "minilm")
-                            for c, o in (("1-missing-scene", "out1.srt"), ("2-extra-scene", "out2.srt"))]:
-              truth = {}
-              for s, _, x in media.read_srt(f"{case}/truth.fr.srt"):
-                  truth.setdefault(x, []).append(s)
-              err = [abs(s - truth[x].pop(0)) for s, _, x in media.read_srt(f"{tmp}/{out}") if truth.get(x)]
-              share = sum(e <= 0.3 for e in err) / len(err)
-              print(f"{case}: {100 * share:.1f} % of lines within 300 ms")
-              assert share >= 0.95, case
+            test ! -e "$out-3.srt"
+            uv run --locked python - "$variant" "$out" <<'EOF'
+          import sys
+          from compare import accuracy
+          variant, out = sys.argv[1:]
+          for n, case in ((1, "1-missing-scene"), (2, "2-extra-scene")):
+              share, worst = accuracy(f"{out}-{n}.srt", f"{case}/truth.fr.srt")
+              print(f"{variant} {case}: {100 * share:.1f} % of lines within 300 ms, worst {worst:.2f} s")
+              assert share == 1.0, (variant, case)
           EOF
+          done
+
+  # The unit tests (no model) on the other systems the README names.
+  unit-tests:
+    needs: changes
+    if: needs.changes.outputs.python == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.runner }}
+    env:
+      UV_PYTHON: "3.12"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+      - run: uv run --locked pytest -q
+
+  # A change to the READMEs, the changelog or the plugin only: the release script's checks of
+  # those files (the full unit suite above covers them otherwise).
+  release-files:
+    needs: changes
+    if: needs.changes.outputs.release-files == 'true' && needs.changes.outputs.python != 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+      - run: uv run --locked pytest -q tests/test_release.py
+
+  # The image as release.yml builds it (amd64 only here; the release builds both).
+  image:
+    needs: changes
+    if: needs.changes.outputs.image == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - run: docker build -t semantic-subsync:ci .
+      - run: docker run --rm semantic-subsync:ci semantic-subsync --version
+      - name: The image reads an embedded subtitle (ffmpeg, ffprobe, disposition flags)
+        run: docker run --rm -v "$PWD/tools:/tools:ro" semantic-subsync:ci python /tools/smoke_image.py
+
+  # The Jellyfin plugin compiles, with the same command as release.yml.
+  plugin:
+    needs: changes
+    if: needs.changes.outputs.plugin == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build the plugin (.NET SDK container, as for a local build)
+        run: |
+          docker run --rm -v "$PWD/integrations/jellyfin:/src" -w /src mcr.microsoft.com/dotnet/sdk:10.0 \
+            dotnet publish Jellyfin.Plugin.SemanticSubSync -c Release -o /src/artifacts

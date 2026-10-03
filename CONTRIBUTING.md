@@ -34,7 +34,11 @@ SEMSYNC_CORPUS=~/corpus SEMSYNC_CACHE=~/corpus/emb mise x -- uv run --extra mode
 no correction is clearly worse than the untouched file. They are skipped when `SEMSYNC_CORPUS`
 is not set.
 
-**CI** runs on pushes to `main` that change code, not on documentation-only changes.
+**CI** (`.github/workflows/tests.yml`) runs on every push to `main` and every pull request, and
+only starts the jobs whose files changed: the unit tests on Linux, Windows and macOS, the real
+models and the lighthouse example on Linux x86-64 and ARM64, the Docker image, the Jellyfin
+plugin build. A documentation-only change runs no test job, but still gets the green run that
+the release script requires.
 
 ### Rules
 
@@ -55,4 +59,6 @@ git push origin main vX.Y.Z                      # starts the release workflow
 ```
 
 The script refuses to run outside a clean, pushed `main` whose last CI run is green, or with an
-empty `[Unreleased]`.
+empty `[Unreleased]`. If the unit tests fail on the bumped files, it puts every file back. The
+release workflow attaches the files to a draft release and only publishes it once all of them
+are there; a failed run can be re-run as is.

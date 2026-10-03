@@ -25,9 +25,8 @@ from semantic_subsync import core, media
 
 def confident_pairs(tgt, ref):
     """{target index: reference index} for target lines with one obvious translation."""
-    tt = [core.clean(c[2]) for c in tgt]; rt = [core.clean(c[2]) for c in ref]
-    ti = [i for i, x in enumerate(tt) if len(x) >= 3]; ri = [j for j, x in enumerate(rt) if len(x) >= 3]
-    s = core.embed([tt[i] for i in ti]) @ core.embed([rt[j] for j in ri]).T
+    ti, ri, s = core.similarity(tgt, ref)          # the engine's cue-to-cue cosine matrix
+    tt = core.embeddable(tgt)[1]
     o = np.argsort(-s, axis=1)
     return {i: ri[o[a, 0]] for a, i in enumerate(ti)
             if s[a, o[a, 0]] >= 0.70 and s[a, o[a, 0]] - s[a, o[a, 1]] >= 0.15 and len(tt[i]) >= 12}

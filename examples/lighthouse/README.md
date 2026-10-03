@@ -29,7 +29,7 @@ within 300 ms of its true position.
 | ffsubsync 0.5.1 | ❌ 52 %, 70 s off | ❌ 52 %, 70 s off | ❌ changes the file (up to 36 s) |
 | ffsubsync 0.5.1 `--split-penalty 5` | ❌ 52 %, 81 s off | ❌ 52 %, 61 s off | ❌ changes the file (up to 96 s) |
 | LAPSE 2.2.3 | ❌ 52 %, 70 s off, verdict "solid" | ❌ 52 %, 70 s off, verdict "solid" | ❌ changes the file (up to 75 s), verdict "solid" |
-| **SemanticSubSync 0.9.0** | ✅ **100 %** | ✅ **100 %** | ✅ **unsure, file left alone** |
+| **SemanticSubSync 0.12.0** (either model) | ✅ **100 %** | ✅ **100 %** | ✅ **unsure, file left alone** |
 
 Why the tools differ:
 
@@ -54,4 +54,5 @@ python examples/lighthouse/plot.py docs                       # the schematics o
 ```
 
 `compare.py` runs the tools it finds on the PATH (`alass-cli` or `alass`, `ffsubsync`, `lapse`)
-and skips the missing ones.
+and skips the missing ones; `SEMSYNC_MODEL=minilm` picks the other sentence model. The CI checks
+the SemanticSubSync row (100 % and unsure) with the static, minilm and int8 minilm models.

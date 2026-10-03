@@ -974,15 +974,12 @@ dependencies = [
     { name = "charset-normalizer" },
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "numpy", version = "2.5.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "tokenizers" },
 ]
 
 [package.optional-dependencies]
 model = [
     { name = "fastembed" },
-    { name = "tokenizers" },
-]
-static = [
-    { name = "tokenizers" },
 ]
 
 [package.dev-dependencies]
@@ -995,8 +992,7 @@ requires-dist = [
     { name = "charset-normalizer", specifier = ">=3" },
     { name = "fastembed", marker = "extra == 'model'", specifier = ">=0.8" },
     { name = "numpy", specifier = ">=2" },
-    { name = "tokenizers", marker = "extra == 'model'", specifier = ">=0.20" },
-    { name = "tokenizers", marker = "extra == 'static'", specifier = ">=0.20" },
+    { name = "tokenizers", specifier = ">=0.20" },
 ]
 provides-extras = ["model", "static"]
 
