@@ -40,7 +40,7 @@ Usage: semantic-subsync-worker run                          process the queue fo
        semantic-subsync-worker prepare                      download and load the sentence model (SEMSYNC_MODEL) now,
                                                             so the first subtitle does not wait for it
 """
-import argparse, contextlib, json, os, shutil, sys, tempfile, time, traceback
+import argparse, contextlib, json, os, secrets, shutil, sys, tempfile, time, traceback
 try:
     import fcntl
 except ImportError:                 # Windows: the log is written without a lock
@@ -572,9 +572,10 @@ def run():
 
 def enqueue(job, n=0):
     """Drop a job file into the queue: written under a temporary name then renamed, so the worker
-    never reads half a job; the name is unique (time, then `n`), so no pending job is overwritten."""
+    never reads half a job; the name is unique (time, `n`, then a random part: the clock alone can
+    repeat, e.g. on Windows), so no pending job is overwritten."""
     os.makedirs(QUEUE, exist_ok=True)
-    name = os.path.join(QUEUE, f"{time.time_ns()}-{n:06d}-{job.get('origin', 'job')}.job")
+    name = os.path.join(QUEUE, f"{time.time_ns()}-{n:06d}-{secrets.token_hex(4)}-{job.get('origin', 'job')}.job")
     with open(name + ".tmp", "w", encoding="utf-8") as f:
         json.dump(job, f, ensure_ascii=False)
     os.replace(name + ".tmp", name)
