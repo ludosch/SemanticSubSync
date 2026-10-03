@@ -91,6 +91,7 @@ def test_jellyfin_manifest():
     now = datetime.datetime(2026, 10, 2, 12, 0, tzinfo=datetime.timezone.utc)
     [plugin] = jm.manifest("0.12.0", b"zip", "\n### Added\n- A thing.\n", abi, now)
     assert plugin["guid"] in (jm.ROOT / "integrations/jellyfin/Jellyfin.Plugin.SemanticSubSync/Plugin.cs").read_text(encoding="utf-8")
+    assert (jm.ROOT / plugin["imageUrl"].split("/main/", 1)[1]).is_file()   # the logo Jellyfin shows
     [v] = plugin["versions"]
     assert v["version"] == "0.12.0.0" and v["checksum"] == hashlib.md5(b"zip").hexdigest()
     assert v["sourceUrl"].endswith("/releases/download/v0.12.0/jellyfin-plugin-semanticsubsync-0.12.0.zip")

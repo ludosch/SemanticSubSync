@@ -29,6 +29,7 @@ PLUGIN = {
         "media folders."),
     "owner": "ludosch",
     "category": "Metadata",
+    "imageUrl": "https://raw.githubusercontent.com/ludosch/SemanticSubSync/main/integrations/jellyfin/logo.png",
 }
 
 

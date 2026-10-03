@@ -6,6 +6,9 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- Jellyfin plugin: a logo in the plugin catalog.
+
 ## [0.12.0] - 2026-10-03
 
 ### Added
