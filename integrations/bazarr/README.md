@@ -110,7 +110,7 @@ The default model (`static`) is downloaded on first use (about 220 MB). To run o
 
 | Variable | Default | |
 |---|---|---|
-| `SEMSYNC_MODEL` | `static` | Sentence model: `static` or `minilm` (see [Model](../../README.md#model)) |
+| `SEMSYNC_MODEL` | `static` | Sentence model: `static` or `minilm` (see [Models](../../docs/models.md)) |
 | `SEMSYNC_OUTPUT` | `replace` | `replace`: the correction takes the subtitle's name, the download is kept as `.replaced`. `side`: the download is left as is, the correction is written as `.resync` |
 | `SEMSYNC_EXTRA_LINES` | `drop` | Lines the video has no room for (a translator credit, a recap or a scene that your video lacks) are removed. `keep` leaves them where nothing is shown nor said, a block of consecutive lines whole or not at all |
 | `SEMSYNC_LOG_MAX_MB` | `10` | Size limit of the log; its oldest entries are deleted beyond it (see [Logs](#logs)). `0`: no limit |
